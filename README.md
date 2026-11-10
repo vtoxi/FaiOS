@@ -2,7 +2,7 @@
 
 Lightweight feature-phone OS (Linux + LVGL), developed desktop-first. Target: Jazz Digit 4G — **hardware unknown, no compatibility claimed** (see [HARDWARE_DISCOVERY.md](docs/HARDWARE_DISCOVERY.md)).
 
-**Status:** Milestone 1 code written, **not yet compiled or run** (no toolchain on the dev machine yet). See [ROADMAP.md](ROADMAP.md).
+**Status:** Milestone 1 builds and unit tests pass; simulator window not yet visually verified. See [ROADMAP.md](ROADMAP.md).
 
 Quick start (Ubuntu in WSL2): `bash build/scripts/setup-wsl.sh`, then see [BUILD.md](docs/BUILD.md).
 

@@ -4,15 +4,15 @@ Legend: [x] done and verified · [~] written, unverified · [ ] not started
 
 ## M1 — Desktop simulator
 - [x] Inspect environment: WSL2 present but **no distro**; Windows has no gcc/cmake/ninja (git, Python only)
-- [~] Project structure, CMake (core lib + tests + optional LVGL/SDL2 simulator)
-- [~] Home screen: clock, date, signal, Wi-Fi, battery, unread indicator, softkeys
-- [~] Keyboard navigation + configurable keymap
-- [~] Launcher + Phone, Contacts, Messages, Call history, Settings screens
-- [~] Core tests (ctest)
+- [x] Project structure, CMake (core lib + tests + optional LVGL/SDL2 simulator) � builds on Ubuntu/WSL2
+- [~] (compiled, not seen) Home screen: clock, date, signal, Wi-Fi, battery, unread indicator, softkeys
+- [~] (compiled, not seen) Keyboard navigation + configurable keymap
+- [~] (compiled, not seen) Launcher + Phone, Contacts, Messages, Call history, Settings screens
+- [x] Core tests (ctest): 1/1 pass
 - [ ] **Build, run tests, launch simulator, fix errors** — blocked on toolchain
 - [ ] Verify against completion criteria (see below)
 
-M1 is complete only when it compiles, tests pass, the window launches and keys work. None of that has been observed yet.
+M1 is complete once the window is visually confirmed and keys work in it. Compile and unit tests are verified; rendering and live input are not.
 
 ## Later (not started)
 - M3 core services (config, logging, notifications, power, storage)

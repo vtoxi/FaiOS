@@ -3,6 +3,8 @@
 #define LV_CONF_H
 
 #define LV_COLOR_DEPTH 32
+#define LV_BUILD_EXAMPLES 0
+#define LV_BUILD_DEMOS 0
 #define LV_USE_SDL 1
 #define LV_SDL_INCLUDE_PATH <SDL2/SDL.h>
 

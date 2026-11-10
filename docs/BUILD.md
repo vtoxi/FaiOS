@@ -1,6 +1,6 @@
 # Build
 
-**Untested:** these steps have not been run yet.
+Build and ctest verified on Ubuntu 25.x WSL2. First configure is slow (~4 min, downloads LVGL). Window display via WSLg not yet verified.
 
 ## Toolchain (Ubuntu in WSL2)
 Windows currently has WSL2 but no distro. In PowerShell (admin, may need reboot):
