@@ -1,6 +1,6 @@
 # Roadmap
 
-Legend: [x] done and verified Â· [~] written, unverified Â· [ ] not started
+Legend: [x] done and verified · [~] written, unverified · [ ] not started
 
 ## M1 â€” Desktop simulator
 - [x] Inspect environment: WSL2 present but **no distro**; Windows has no gcc/cmake/ninja (git, Python only)
@@ -9,7 +9,7 @@ Legend: [x] done and verified Â· [~] written, unverified Â· [ ] not started
 - [~] (compiled, not seen) Keyboard navigation + configurable keymap
 - [~] (compiled, not seen) Launcher + Phone, Contacts, Messages, Call history, Settings screens
 - [x] Core tests (ctest): 1/1 pass
-- [ ] **Build, run tests, launch simulator, fix errors** â€” blocked on toolchain
+- [x] Build + ctest pass; simulator runs headless without crashing
 - [ ] Verify against completion criteria (see below)
 
 M1 is complete once the window is visually confirmed and keys work in it. Compile and unit tests are verified; rendering and live input are not.
@@ -18,7 +18,7 @@ M1 is complete once the window is visually confirmed and keys work in it. Compil
 - M3 core services (config, logging, notifications, power, storage)
 - M4 HAL interfaces + simulator backends (add when a second implementation exists)
 - M5 Buildroot generic QEMU image (not device-compatible)
-- M6 Hardware discovery Â· M7 Firmware preservation (blocked: phone not powering on)
+- M6 Hardware discovery · M7 Firmware preservation (blocked: phone not powering on)
 
 ## Not supported
 Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File manager/Connectivity/Battery apps.
