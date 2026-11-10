@@ -15,6 +15,7 @@ bool keyFromName(const std::string& name, Key& out) {
 }
 
 void AppManager::push(std::unique_ptr<Screen> s) {
+  log.log(Level::Info, "nav", "push " + s->view().title);
   stack_.push_back(std::move(s));
   changed();
 }
@@ -36,6 +37,33 @@ void AppManager::handleKey(Key k) {
   // Screens may push() while handling a key; popping is done here, after onKey returns.
   if (!top()->onKey(k) && (k == Key::Back || k == Key::Soft2)) { pop(); return; }
   changed();
+}
+
+SystemStatus AppManager::status() const {
+  SystemStatus st;
+  st.signal = device.signal;
+  st.battery = power->batteryPercent();
+  st.charging = power->charging();
+  st.brightness = power->brightness();
+  st.wifi = device.wifi;
+  st.bluetooth = device.bluetooth;
+  st.badge = device.unread() + int(notifications.count());
+  return st;
+}
+
+void AppManager::loadSettings() {
+  if (!config) return;
+  device.wifi = config->getBool("wifi", device.wifi);
+  device.bluetooth = config->getBool("bluetooth", device.bluetooth);
+  power->setBrightness(config->getInt("brightness", power->brightness()));
+}
+
+void AppManager::saveSettings() {
+  if (!config) return;
+  config->setBool("wifi", device.wifi);
+  config->setBool("bluetooth", device.bluetooth);
+  config->setInt("brightness", power->brightness());
+  if (!config->save()) log.log(Level::Warn, "config", "save failed");
 }
 
 }  // namespace fai

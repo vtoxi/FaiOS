@@ -4,6 +4,7 @@
 #include <lvgl.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <map>
@@ -45,7 +46,7 @@ static void render() {
   lv_obj_clean(scr);
   lv_obj_set_style_bg_color(scr, lv_color_hex(C_BG), 0);
   const View v = g_mgr.top()->view();
-  const Device& d = g_mgr.device;
+  const SystemStatus st = g_mgr.status();
 
   // status bar: clock | signal bars, wifi, battery
   box(scr, 0, 0, W, BAR, C_BAR);
@@ -54,10 +55,10 @@ static void render() {
   std::strftime(hm, sizeof hm, "%H:%M", std::localtime(&t));
   text(scr, hm, &lv_font_montserrat_14, C_TXT, 6, 2);
   for (int i = 0; i < 4; i++)
-    box(scr, 100 + i * 6, BAR - 5 - (i + 1) * 3, 4, (i + 1) * 3, i < d.signal ? C_TXT : C_DIM);
-  if (d.wifi) text(scr, LV_SYMBOL_WIFI, &lv_font_montserrat_14, C_TXT, 132, 2);
-  if (d.unread()) text(scr, LV_SYMBOL_ENVELOPE, &lv_font_montserrat_14, C_ACC, 156, 2);
-  text(scr, std::to_string(d.battery) + "%", &lv_font_montserrat_14, C_TXT, 196, 2);
+    box(scr, 100 + i * 6, BAR - 5 - (i + 1) * 3, 4, (i + 1) * 3, i < st.signal ? C_TXT : C_DIM);
+  if (st.wifi) text(scr, LV_SYMBOL_WIFI, &lv_font_montserrat_14, C_TXT, 132, 2);
+  if (st.badge) text(scr, LV_SYMBOL_ENVELOPE, &lv_font_montserrat_14, C_ACC, 156, 2);
+  text(scr, std::to_string(st.battery) + "%", &lv_font_montserrat_14, C_TXT, 196, 2);
 
   if (v.home) {
     text(scr, v.lines[0], &lv_font_montserrat_48, C_TXT, 40, 70);
@@ -123,6 +124,15 @@ int main(int argc, char** argv) {
   lv_tick_set_cb(SDL_GetTicks);
   SDL_AddEventWatch(onSdlEvent, nullptr);
 
+  g_mgr.log.sink = [](const LogEntry& e) { std::fprintf(stderr, "[%s] %s: %s\n", levelName(e.level), e.tag.c_str(), e.msg.c_str()); };
+  const char* home = std::getenv("HOME");
+  FileStorage storage(std::string(home ? home : ".") + "/.faios");
+  Config config(storage);
+  ServiceManager services(g_mgr.log);
+  services.add(std::make_unique<FnService>("config", [&] { config.load(); g_mgr.config = &config; g_mgr.loadSettings(); return true; },
+                                           [&] { g_mgr.saveSettings(); g_mgr.config = nullptr; }));
+  services.startAll();
+
   g_mgr.onChange = [] { g_dirty = true; };
   g_mgr.push(makeHome(g_mgr));
   lv_timer_create([](lv_timer_t*) { if (g_mgr.top()->view().home) g_dirty = true; }, 1000, nullptr);  // clock tick
@@ -132,5 +142,6 @@ int main(int argc, char** argv) {
     if (g_dirty) { g_dirty = false; render(); }  // ponytail: rebuilds whole UI per change; diff/update if it gets slow
     SDL_Delay(5);
   }
+  services.stopAll();
   return 0;
 }

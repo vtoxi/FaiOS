@@ -110,7 +110,7 @@ class HomeScreen : public Screen {
     std::strftime(hm, sizeof hm, "%H:%M", std::localtime(&t));
     std::strftime(date, sizeof date, "%a %d %b", std::localtime(&t));
     v.lines = {hm, date};
-    if (int n = m_.device.unread()) v.lines.push_back(std::to_string(n) + " new message" + (n > 1 ? "s" : ""));
+    if (int n = m_.status().badge) v.lines.push_back(std::to_string(n) + " unread");
     v.keys = {"Menu", "", "Contacts"};
     return v;
   }
@@ -165,13 +165,13 @@ std::unique_ptr<Screen> makeCallHistory(AppManager&) {
 std::unique_ptr<Screen> makeSettings(AppManager& m) {
   auto onoff = [](bool b) { return b ? "On" : "Off"; };
   Items it{
-      {[&m, onoff] { return std::string("Wi-Fi: ") + onoff(m.device.wifi); }, [&m] { m.device.wifi = !m.device.wifi; }},
-      {[&m, onoff] { return std::string("Bluetooth: ") + onoff(m.device.bluetooth); }, [&m] { m.device.bluetooth = !m.device.bluetooth; }},
-      {[&m] { return "Brightness: " + std::to_string(m.device.brightness) + "%"; },
-       [&m] { m.device.brightness = m.device.brightness >= 100 ? 20 : m.device.brightness + 20; }},
+      {[&m, onoff] { return std::string("Wi-Fi: ") + onoff(m.device.wifi); }, [&m] { m.device.wifi = !m.device.wifi; m.saveSettings(); }},
+      {[&m, onoff] { return std::string("Bluetooth: ") + onoff(m.device.bluetooth); }, [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }},
+      {[&m] { return "Brightness: " + std::to_string(m.power->brightness()) + "%"; },
+       [&m] { int b = m.power->brightness(); m.power->setBrightness(b >= 100 ? 20 : b + 20); m.saveSettings(); }},
       fixed("About", [&m] {
         m.push(std::make_unique<TextScreen>("About", std::vector<std::string>{
-                   "FaiOS 0.1", "Desktop simulator", "No hardware target", "Settings not saved"}));
+                   "FaiOS 0.1", "Desktop simulator", "No hardware target", "Settings saved to storage"}));
       })};
   return std::make_unique<ListScreen>("Settings", std::move(it), "Change");
 }

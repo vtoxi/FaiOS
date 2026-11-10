@@ -22,3 +22,9 @@ M1 complete: builds, tests pass, window launches, keys work (user-confirmed).
 
 ## Not supported
 Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File manager/Connectivity/Battery apps.
+
+## M3 — Core services
+- [x] Logger (bounded ring + sink), Storage (File atomic + Mem, rejects `..`/absolute keys), Config (key=value), Notifications, IPower (+SimPower), Service lifecycle (ordered start, rollback on failure, reverse stop), SystemStatus — unit-tested, all pass
+- [x] Settings (Wi-Fi, Bluetooth, brightness) persist via Config; simulator stores them in `~/.faios/config.ini`
+- [ ] Not yet seen in the live window: settings surviving a simulator restart
+- [ ] Notifications have no UI beyond the status-bar badge count

@@ -10,3 +10,6 @@ tests/      ctest, links core only.
 - `Device` holds **simulated** data; it is the seam where real HAL providers plug in later.
 
 Deliberately not built yet (no second implementation exists): HAL interfaces, service layer, IPC, SQLite, Buildroot. The spec's full directory tree is not scaffolded; folders are added with the code that fills them.
+
+## Services (core/services.h)
+Logger, IStorage (FileStorage/MemStorage), Config, Notifications, IPower (SimPower), Service/ServiceManager, SystemStatus. `AppManager` owns logger, notifications and power, and holds an optional `Config*`; the renderer reads `AppManager::status()`. On device, IPower/IStorage get real implementations. Settings persist as `wifi`, `bluetooth`, `brightness` keys.

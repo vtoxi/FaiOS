@@ -6,3 +6,5 @@
 4. **Placeholder 240x320 display** — generic QVGA, not a Jazz Digit 4G spec.
 5. **Wrote code before having a compiler** (user's choice, 2026-11-11). All code unverified until first build.
 6. **Whole-UI rebuild per change** in the renderer — simple; optimise only if measured slow.
+7. **Services in one header** (`services.h`) — each is tiny; split per file when one grows. Storage keys are relative names only (no `..`, no absolute) so a bad caller can't escape the data dir.
+8. **Battery/brightness moved from `Device` to `IPower`** so real hardware can replace the simulated source behind one interface.

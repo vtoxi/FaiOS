@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(FAIOS_BUILD_SIMULATOR "Build the LVGL/SDL2 desktop simulator (needs network + libsdl2-dev)" ON)
 
 # Toolkit-independent core: screens, key routing, simulated device state.
-add_library(faios_core core/app_manager.cpp core/screens.cpp)
+add_library(faios_core core/app_manager.cpp core/screens.cpp core/services.cpp)
 target_include_directories(faios_core PUBLIC core)
 
 enable_testing()
