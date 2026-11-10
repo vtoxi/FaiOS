@@ -12,7 +12,7 @@ Legend: [x] done and verified · [~] written, unverified · [ ] not started
 - [x] Build + ctest pass; simulator runs headless without crashing
 - [ ] Verify against completion criteria (see below)
 
-M1 is complete once the window is visually confirmed and keys work in it. Compile and unit tests are verified; rendering and live input are not.
+M1 complete: builds, tests pass, window launches, keys work (user-confirmed).
 
 ## Later (not started)
 - M3 core services (config, logging, notifications, power, storage)
