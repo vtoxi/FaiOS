@@ -12,7 +12,7 @@ Rule: a field is **VERIFIED** only with first-hand evidence from *this* phone (p
 | SoC / CPU arch | UNKNOWN | open | LEADS conflict: MediaTek MT6731 (some variants) ([ProPakistani](https://propakistani.pk/2021/01/05/digit-brings-affordable-handsets-with-web-enabled-services-and-optimal-connectivity/)); Qualcomm MSM8905 (one listing); Digit 4G **Lite** reportedly Spreadtrum/Unisoc. E-2 (unconfirmed) also points to MediaTek. Do not pick a toolchain from any of these yet. |
 | RAM / flash | UNKNOWN | open | LEADS vary per variant (512 MB RAM / 4 GB flash seen) |
 | Modem | UNKNOWN | open | |
-| SIM slots | UNKNOWN | open | LEAD: dual SIM on some variants. Simulator shows a 2-slot placeholder only. |
+| SIM slots | 2 (dual SIM) | reported by owner | E-5. Not yet confirmed by modem/hardware; the simulator's 2-slot SIM manager now matches. |
 | Display / keypad / audio / camera | UNKNOWN | open | LEAD: ~2.4" display |
 | Wi-Fi / Bluetooth | UNKNOWN | open | |
 | Battery | label 3.8 V; pack measured 0 V | partly observed | user multimeter reading (E-0) |
@@ -33,6 +33,7 @@ Add one row per finding. Confidence: high = direct observation of this unit, med
 | E-2 | 2026-11-11 | Windows lists USB `VID_0E8D&PID_2000` "MT65xx Preloader", status Error, present at scan time. 0E8D is MediaTek's vendor ID; this PID is the MediaTek BootROM/Preloader serial port. **Not yet confirmed to be this phone** (user to say whether it was plugged in). If it is, that points to a MediaTek SoC and suggests the phone is alive but cannot boot without a battery. | `usb-inventory.ps1` output | medium (device identity unconfirmed) |
 | E-3 | 2026-11-11 | Windows device history (not currently present): `0E8D:2000` "MT65xx Preloader" on two different ports and `0E8D:0003` "USB Serial Device (COM5)". 0E8D is MediaTek's vendor ID, so a MediaTek-based USB device has connected to this PC at least twice. Which device it was is unconfirmed. | `Get-PnpDevice` (read-only) | low-medium |
 | E-4 | 2026-11-11 | `usb-watch.ps1` ran 120 s (11:27:27-11:29:27) while the user unplugged and replugged the phone: **no USB device appeared or disappeared**. So no enumeration was observed from the phone in this state. Not conclusive: polling is ~1 s and a sub-second blip would be missed; cable data capability and battery state were not controlled. | `usb-watch.ps1` log | medium (negative result, limited) |
+| E-5 | 2026-11-11 | Owner states the phone is dual SIM (first-hand knowledge of the unit; not yet seen in hardware or logs) | user statement | medium |
 
 ## Discovery plan (safest first; stop at the first tier that answers the question)
 
