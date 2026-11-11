@@ -9,6 +9,7 @@
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <sstream>
 
 #include "screens.h"
 
@@ -98,17 +99,17 @@ static void drawStatusBar(lv_obj_t* scr, const SystemStatus& st) {
   std::time_t t = std::time(nullptr);
   char hm[8];
   std::strftime(hm, sizeof hm, "%H:%M", std::localtime(&t));
-  label(scr, hm, F14, C_TXT, 0, 4, W, LV_TEXT_ALIGN_CENTER);
+  label(scr, hm, F14, C_TXT, 40, 4, 44);  // clock sits next to the signal bars, never under the icon group
   const char* bat = st.battery > 85 ? LV_SYMBOL_BATTERY_FULL : st.battery > 60 ? LV_SYMBOL_BATTERY_3
                     : st.battery > 35 ? LV_SYMBOL_BATTERY_2 : st.battery > 10 ? LV_SYMBOL_BATTERY_1 : LV_SYMBOL_BATTERY_EMPTY;
   std::string g;
-  if (st.badge) g += std::string(LV_SYMBOL_ENVELOPE) + "  ";
+  if (st.badge) g += std::string(LV_SYMBOL_ENVELOPE) + " ";
   if (st.airplane) g += "AIR  ";
-  if (st.hotspot) g += std::string(LV_SYMBOL_UPLOAD) + "  ";
-  if (st.bluetooth) g += std::string(LV_SYMBOL_BLUETOOTH) + "  ";
-  if (st.wifi) g += std::string(LV_SYMBOL_WIFI) + "  ";
+  if (st.hotspot) g += std::string(LV_SYMBOL_UPLOAD) + " ";
+  if (st.bluetooth) g += std::string(LV_SYMBOL_BLUETOOTH) + " ";
+  if (st.wifi) g += std::string(LV_SYMBOL_WIFI) + " ";
   g += std::to_string(st.battery) + "% " + (st.charging ? LV_SYMBOL_CHARGE : "") + bat;
-  label(scr, g, F14, C_TXT, W - 138, 4, 130, LV_TEXT_ALIGN_RIGHT);
+  label(scr, g, F14, C_TXT, 88, 4, W - 94, LV_TEXT_ALIGN_RIGHT);  // icon group owns x=88..right edge; "..." if it ever overflows
 }
 
 static void drawSoftkeys(lv_obj_t* scr, const Softkeys& k) {
@@ -168,7 +169,7 @@ static void drawGrid(lv_obj_t* scr, const View& v, int top) {
     const int x = gx + (i % cols) * (tile + gx), y = top + row * (tile + gy);
     rr(scr, x, y, tile, tile, 14, sel ? C_ACC : C_SURF);
     if (const Ic* ic = findIcon(r.lead)) label(scr, ic->sym, F28, sel ? 0xFFFFFF : ic->col, x, y + 5, tile, LV_TEXT_ALIGN_CENTER);
-    label(scr, r.text, F12, sel ? 0xFFFFFF : C_DIM, x + 2, y + 41, tile - 4, LV_TEXT_ALIGN_CENTER);
+    label(scr, r.text, F12, sel ? 0xFFFFFF : C_DIM, x - 8, y + 41, tile + 16, LV_TEXT_ALIGN_CENTER);  // may spill into the tile gap so "Messages" fits
   }
   if (v.selected >= 0) {  // full name of the selected app under the grid
     const Row& r = v.rows[v.selected];
@@ -299,6 +300,29 @@ static void render() {
   drawSoftkeys(scr, v.keys);
 }
 
+// Screenshot mode: --script "shot:home,Ok,shot:menu" --shots DIR renders to DIR/<name>.ppm and exits.
+static uint8_t g_fb[W * H * 4];  // headless framebuffer (BGRA), used only in screenshot mode
+static void headlessFlush(lv_display_t* d, const lv_area_t*, uint8_t*) { lv_display_flush_ready(d); }
+
+static void shot(const std::string& path) {
+  render();
+  lv_obj_update_layout(lv_screen_active());
+  lv_refr_now(nullptr);
+  std::ofstream f(path, std::ios::binary);
+  f << "P6\n" << W << " " << H << "\n255\n";
+  for (int i = 0; i < W * H; i++) { char px[3] = {char(g_fb[i * 4 + 2]), char(g_fb[i * 4 + 1]), char(g_fb[i * 4])}; f.write(px, 3); }
+}
+
+static void runScript(const std::string& script, const std::string& dir) {
+  std::stringstream ss(script);
+  for (std::string tok; std::getline(ss, tok, ',');) {
+    Key k;
+    if (tok.rfind("shot:", 0) == 0) shot(dir + "/" + tok.substr(5) + ".ppm");
+    else if (keyFromName(tok, k)) g_mgr.handleKey(k);
+    else std::fprintf(stderr, "script: unknown key '%s'\n", tok.c_str());
+  }
+}
+
 static void defaultKeys() {
   g_keys = {{SDLK_UP, Key::Up}, {SDLK_DOWN, Key::Down}, {SDLK_LEFT, Key::Left}, {SDLK_RIGHT, Key::Right},
             {SDLK_RETURN, Key::Ok}, {SDLK_KP_ENTER, Key::Ok}, {SDLK_ESCAPE, Key::Back}, {SDLK_BACKSPACE, Key::Back},
@@ -333,12 +357,24 @@ static int onSdlEvent(void*, SDL_Event* e) {
 
 int main(int argc, char** argv) {
   defaultKeys();
-  if (argc > 2 && std::string(argv[1]) == "--keymap") loadKeymap(argv[2]);
+  std::string script, shotsDir = ".";
+  for (int i = 1; i + 1 < argc; i++) {
+    std::string a = argv[i];
+    if (a == "--keymap") loadKeymap(argv[i + 1]);
+    else if (a == "--script") script = argv[i + 1];
+    else if (a == "--shots") shotsDir = argv[i + 1];
+  }
 
   lv_init();
-  lv_sdl_window_create(W, H);
   lv_tick_set_cb(SDL_GetTicks);
-  SDL_AddEventWatch(onSdlEvent, nullptr);
+  if (!script.empty()) {  // screenshot mode: render into RAM, no window
+    lv_display_t* d = lv_display_create(W, H);
+    lv_display_set_buffers(d, g_fb, nullptr, sizeof g_fb, LV_DISPLAY_RENDER_MODE_FULL);
+    lv_display_set_flush_cb(d, headlessFlush);
+  } else {
+    lv_sdl_window_create(W, H);
+    SDL_AddEventWatch(onSdlEvent, nullptr);
+  }
 
   g_mgr.log.sink = [](const LogEntry& e) { std::fprintf(stderr, "[%s] %s: %s\n", levelName(e.level), e.tag.c_str(), e.msg.c_str()); };
   const char* home = std::getenv("HOME");
@@ -359,6 +395,8 @@ int main(int argc, char** argv) {
     if (second) g_mgr.tick(std::time(nullptr));  // fires due alarms
     if (l == Layout::Clock || (l == Layout::Home && second)) g_dirty = true;
   }, 100, nullptr);
+
+  if (!script.empty()) { runScript(script, shotsDir); services.stopAll(); return 0; }
 
   while (g_running) {
     lv_timer_handler();
