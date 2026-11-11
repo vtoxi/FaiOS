@@ -13,6 +13,7 @@ enable_testing()
 add_executable(test_core tests/test_core.cpp)
 target_link_libraries(test_core faios_core)
 add_test(NAME core COMMAND test_core)
+install(PROGRAMS $<TARGET_FILE:test_core> DESTINATION bin RENAME faios-selftest)  # used by the Buildroot image
 
 if(FAIOS_BUILD_SIMULATOR)
   find_package(SDL2 REQUIRED)
