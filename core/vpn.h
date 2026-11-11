@@ -66,7 +66,7 @@ class IVpnBackend {
 };
 
 // Real backend: runs the commands from wg_commands.h through an ICommandRunner. Needs root and a kernel with
-// WireGuard. Command generation is unit-tested; an actual tunnel has NOT been established with it yet.
+// WireGuard. Command generation is unit-tested, and a real tunnel + kill switch was verified in the generic QEMU image (tools/tunnel_test.cpp). Not verified on the Digit 4G.
 class CommandVpnBackend : public IVpnBackend {
  public:
   explicit CommandVpnBackend(ICommandRunner& r, std::string iface = "wg0", int fwmark = kDefaultFwmark) : r_(r), iface_(std::move(iface)), mark_(fwmark) {}

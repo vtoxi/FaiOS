@@ -26,7 +26,7 @@ class ICommandRunner {
   virtual CommandResult run(const Command& c) = 0;
 };
 
-class PosixRunner : public ICommandRunner {  // fork/exec, Linux. Needs root for ip/wg/nft. NOT yet exercised against a real tunnel.
+class PosixRunner : public ICommandRunner {  // fork/exec, Linux. Needs root for ip/wg/nft. Exercised against a real tunnel in the generic QEMU image (tools/tunnel_test.cpp).
  public:
   CommandResult run(const Command& c) override;
 };

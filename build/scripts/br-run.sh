@@ -10,7 +10,7 @@ KVM=""; [ -w /dev/kvm ] && KVM="-enable-kvm"
 
 args=(-M pc $KVM -m 256 -kernel "$IMG/bzImage"
       -drive "file=$IMG/rootfs.ext2,if=virtio,format=raw"
-      -append "rootwait root=/dev/vda console=ttyS0"
+      -append "rootwait root=/dev/vda console=ttyS0 ${FAIOS_QEMU_APPEND:-}"
       -nic user,model=virtio-net-pci)
 
 if [ "${1:-}" = "--test" ]; then
@@ -19,11 +19,11 @@ if [ "${1:-}" = "--test" ]; then
   QPID=$!
   trap 'kill $QPID 2>/dev/null || true' EXIT
   for _ in $(seq 1 240); do
-    grep -q 'FAIOS-SELFTEST:' "$LOG" && break
+    grep -q 'FAIOS-DONE' "$LOG" && break
     sleep 1
   done
-  grep -E 'FAIOS' "$LOG" || true
-  grep -q 'FAIOS-SELFTEST: PASS' "$LOG"
+  grep -E 'FAIOS|^ok  |^FAIL|checks,' "$LOG" || true
+  grep -q 'FAIOS-SELFTEST: PASS' "$LOG" && grep -q 'FAIOS-TUNNEL: PASS' "$LOG"
 else
   exec qemu-system-x86_64 "${args[@]}" -nographic
 fi

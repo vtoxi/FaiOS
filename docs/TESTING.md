@@ -10,3 +10,7 @@ M3 tests cover: logger ring/filter, storage atomic overwrite and path-traversal 
 App tests: calculator maths (chaining, divide-by-zero, decimals, backspace, length cap), calculator keys, stopwatch with a fake clock, camera/gallery, SIM manager + hotspot rules, launcher reaches all 10 apps.
 
 More app tests: storage list/remove (mem + file), file manager browse/view/delete-confirm, connectivity + airplane, battery screen, alarms (edit validation, persistence, firing once per minute), notifications screen.
+
+## Real-kernel tunnel test (generic QEMU image)
+
+`build/scripts/br-build.sh` (first time) or `br-rebuild.sh` (after changes), then `build/scripts/br-run.sh --test`. Boots the image, runs the self-test, then `faios-tunnel-test`, which brings up a real WireGuard tunnel to a namespace "server" using `CommandVpnBackend` and checks handshake, routing, kill-switch leak blocking and clean teardown. Passes only if both `FAIOS-SELFTEST: PASS` and `FAIOS-TUNNEL: PASS` appear. Never run `faios-tunnel-test` on a normal host: it installs a default-drop firewall table (inside QEMU that is the point). Mutation run: `FAIOS_QEMU_APPEND=faios.mutate=nokillswitch br-run.sh --test` must FAIL the two leak checks.

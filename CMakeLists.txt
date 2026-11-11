@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(FAIOS_BUILD_SIMULATOR "Build the LVGL/SDL2 desktop simulator (needs network + libsdl2-dev)" ON)
 
 # Toolkit-independent core: screens, key routing, simulated device state.
-add_library(faios_core core/app_manager.cpp core/screens.cpp core/services.cpp core/calc.cpp core/games.cpp
+add_library(faios_core STATIC core/app_manager.cpp core/screens.cpp core/services.cpp core/calc.cpp core/games.cpp
             core/json.cpp core/crypto.cpp core/oauth.cpp core/secret_box.cpp core/accounts.cpp
             core/events.cpp core/media.cpp core/ip.cpp core/wireguard.cpp core/command.cpp core/wg_commands.cpp core/network.cpp core/vpn.cpp)
 target_include_directories(faios_core PUBLIC core)
@@ -27,6 +27,12 @@ add_executable(test_core tests/test_core.cpp)
 target_link_libraries(test_core faios_core)
 add_test(NAME core COMMAND test_core)
 install(PROGRAMS $<TARGET_FILE:test_core> DESTINATION bin RENAME faios-selftest)  # used by the Buildroot image
+
+if(UNIX AND NOT APPLE)  # real-kernel WireGuard test: runs inside the QEMU image, needs root
+  add_executable(faios_tunnel_test tools/tunnel_test.cpp)
+  target_link_libraries(faios_tunnel_test faios_core)
+  install(PROGRAMS $<TARGET_FILE:faios_tunnel_test> DESTINATION bin RENAME faios-tunnel-test)
+endif()
 
 if(FAIOS_BUILD_SIMULATOR)
   find_package(SDL2 REQUIRED)
