@@ -1,5 +1,7 @@
 #include "screens.h"
 #include "calc.h"
+#include "calendar.h"
+#include "games.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -806,6 +808,247 @@ class VpnImportScreen : public Screen {
 
 std::unique_ptr<Screen> makeVpnImport(AppManager& m) { return std::make_unique<VpnImportScreen>(m); }
 
+// ---- Calendar (local events; Google Calendar sync is a later phase) ----
+const char* const kMonthNames[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
+const char* const kDayNames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+
+Date todayOf(AppManager& m) {
+  std::time_t t = m.wall();
+  std::tm* tm = std::localtime(&t);
+  return {tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday};
+}
+
+std::string dateCaption(const Date& d) {
+  return std::string(kDayNames[weekday(d.y, d.m, d.d)]) + " " + std::to_string(d.d) + " " + kMonthNames[d.m - 1] + " " + std::to_string(d.y);
+}
+
+class EventEditScreen : public Screen {  // time on the keypad (HHMM). Titles need text entry, which is not built yet.
+ public:
+  EventEditScreen(AppManager& m, Date d) : m_(m), d_(d) {}
+  bool onKey(Key k) override {
+    int d = digitOf(k);
+    if (d >= 0 && buf_.size() < 4) { buf_ += char('0' + d); note_.clear(); }
+    else if ((k == Key::Soft2 || k == Key::Back) && !buf_.empty()) { buf_.pop_back(); note_.clear(); }
+    else if (k == Key::Ok || k == Key::Soft1) {
+      if (buf_.size() != 4) { note_ = "Enter 4 digits (HHMM)"; return true; }
+      int h = std::atoi(buf_.substr(0, 2).c_str()), mi = std::atoi(buf_.substr(2).c_str());
+      if (h > 23 || mi > 59) { note_ = "Invalid time"; return true; }
+      if (!m_.events || !m_.events->add(d_, h * 60 + mi, 60, "Event")) { note_ = "Could not save the event"; return true; }
+      m_.requestPop();
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "New event";
+    v.layout = Layout::Dial;
+    std::string p = buf_;
+    while (p.size() < 4) p += '_';
+    v.lines = {p.substr(0, 2) + ":" + p.substr(2), note_.empty() ? "Time only for now (no text entry yet)" : note_};
+    v.keys = {"Save", "", buf_.empty() ? "Back" : "Clear"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  Date d_;
+  std::string buf_, note_;
+};
+
+// Live list of one day's events (re-read every draw) with "Add event" first.
+class AgendaScreen : public Screen {
+ public:
+  AgendaScreen(AppManager& m, Date d) : m_(m), d_(d) {}
+  bool onKey(Key k) override {
+    int n = 1 + int(list().size());
+    sel_ = std::min(sel_, n - 1);
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Soft1 || (k == Key::Ok && sel_ == 0)) { if (m_.events) m_.push(std::make_unique<EventEditScreen>(m_, d_)); }
+    else if (k == Key::Ok) {
+      int id = list()[sel_ - 1].id;
+      Item del = fixed("Delete event", [this, id] { if (m_.events) m_.events->remove(id); m_.requestPop(1); }, "alert");
+      del.tone = 1;
+      Items it;
+      it.push_back(std::move(del));
+      it.push_back(fixed("Cancel", [this] { m_.requestPop(1); }));
+      m_.push(std::make_unique<ListScreen>("Delete event?", std::move(it), "Select"));
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = std::to_string(d_.d) + " " + std::string(kMonthNames[d_.m - 1]).substr(0, 3) + " " + std::to_string(d_.y);
+    Row add;
+    add.text = "Add event";
+    add.sub = m_.events ? "Set a time" : "Events unavailable";
+    add.lead = "calendar";
+    v.rows.push_back(add);
+    for (auto& e : list()) {
+      Row r;
+      r.text = e.startMin < 0 ? "All day" : hhmm(e.startMin);
+      r.sub = e.title;
+      r.lead = "clock";
+      v.rows.push_back(std::move(r));
+    }
+    v.selected = std::min(sel_, int(v.rows.size()) - 1);
+    v.keys = {"", v.selected == 0 ? "Add" : "Delete", "Back"};
+    return v;
+  }
+ private:
+  std::vector<Event> list() const { return m_.events ? m_.events->forDay(d_) : std::vector<Event>(); }
+  AppManager& m_;
+  Date d_;
+  int sel_ = 0;
+};
+
+class CalendarScreen : public Screen {  // Mon-first month grid. Left/Right = day, Up/Down = week, OK = that day's events
+ public:
+  explicit CalendarScreen(AppManager& m) : m_(m), cur_(todayOf(m)) {}
+  bool onKey(Key k) override {
+    if (k == Key::Left) cur_ = addDays(cur_, -1);
+    else if (k == Key::Right) cur_ = addDays(cur_, 1);
+    else if (k == Key::Up) cur_ = addDays(cur_, -7);
+    else if (k == Key::Down) cur_ = addDays(cur_, 7);
+    else if (k == Key::Soft1) cur_ = todayOf(m_);
+    else if (k == Key::Ok) m_.push(std::make_unique<AgendaScreen>(m_, cur_));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Calendar";
+    v.layout = Layout::Calendar;
+    Date t = todayOf(m_);
+    std::string mask;
+    for (int d = 1; d <= daysInMonth(cur_.y, cur_.m); d++) mask += m_.events && m_.events->hasEvents({cur_.y, cur_.m, d}) ? '1' : '0';
+    v.lines = {std::string(kMonthNames[cur_.m - 1]) + " " + std::to_string(cur_.y),
+               std::to_string((weekday(cur_.y, cur_.m, 1) + 6) % 7),  // Monday-first offset of the 1st
+               std::to_string(daysInMonth(cur_.y, cur_.m)),
+               std::to_string(cur_.d),
+               std::to_string(t.y == cur_.y && t.m == cur_.m ? t.d : 0),
+               dateCaption(cur_),
+               mask};
+    v.keys = {"Today", "Day", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  Date cur_;
+};
+
+// ---- Games (logic in core/games.cpp; these screens only translate keys and draw boards) ----
+class SnakeScreen : public Screen {
+ public:
+  explicit SnakeScreen(AppManager& m) : m_(m), s_(kW, kH, seed(m)) {}
+  bool onKey(Key k) override {
+    if (k == Key::Up) s_.turn(Dir::Up);
+    else if (k == Key::Down) s_.turn(Dir::Down);
+    else if (k == Key::Left) s_.turn(Dir::Left);
+    else if (k == Key::Right) s_.turn(Dir::Right);
+    else if (k == Key::Ok || k == Key::Soft1) {
+      if (!s_.alive()) { s_ = Snake(kW, kH, seed(m_)); started_ = false; paused_ = false; }
+      else paused_ = !paused_;
+    } else return false;
+    return true;
+  }
+  bool onTick(long long now) override {
+    if (!started_) { started_ = true; last_ = now; return false; }
+    if (paused_ || !s_.alive()) { last_ = now; return false; }
+    const long long period = std::max(90, 200 - 6 * s_.score());  // gets faster with every food
+    bool changed = false;
+    for (int steps = 0; now - last_ >= period && steps < 5; steps++) {
+      s_.step();
+      last_ += period;
+      changed = true;
+      if (!s_.alive()) break;
+    }
+    if (now - last_ >= period) last_ = now;  // after a long stall, do not fast-forward
+    return changed;
+  }
+  View view() const override {
+    View v;
+    v.title = "Snake";
+    v.layout = Layout::Board;
+    v.lines.push_back("Score " + std::to_string(s_.score()) + (!s_.alive() ? "   Game over" : paused_ ? "   Paused" : ""));
+    for (auto& r : s_.board()) v.lines.push_back(r);
+    v.keys = {"", !s_.alive() ? "Retry" : paused_ ? "Resume" : "Pause", "Back"};
+    return v;
+  }
+ private:
+  static constexpr int kW = 14, kH = 13;
+  static uint32_t seed(AppManager& m) { return uint32_t(m.nowMs() & 0xFFFFFFFFLL) | 1u; }
+  AppManager& m_;
+  Snake s_;
+  bool started_ = false, paused_ = false;
+  long long last_ = 0;
+};
+
+class TicTacToeScreen : public Screen {
+ public:
+  explicit TicTacToeScreen(AppManager& m) : g_(uint32_t(m.nowMs() & 0xFFFFFFFFLL) | 1u) {}
+  bool onKey(Key k) override {
+    int col = sel_ % 3, row = sel_ / 3;
+    if (k == Key::Left) col = (col + 2) % 3;
+    else if (k == Key::Right) col = (col + 1) % 3;
+    else if (k == Key::Up) row = (row + 2) % 3;
+    else if (k == Key::Down) row = (row + 1) % 3;
+    else if (k == Key::Ok || k == Key::Soft1) { if (g_.winner()) g_.reset(); else g_.play(sel_); return true; }
+    else return false;
+    sel_ = row * 3 + col;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Tic-Tac-Toe";
+    v.layout = Layout::Board;
+    char w = g_.winner();
+    v.lines.push_back(w == 'X' ? "You win!" : w == 'O' ? "Computer wins" : w == 'D' ? "Draw" : "Your turn (X)");
+    for (int r = 0; r < 3; r++) { std::string row; for (int c = 0; c < 3; c++) row += g_.at(r * 3 + c); v.lines.push_back(row); }
+    v.selected = sel_;
+    v.keys = {"", w ? "Again" : "Place", "Back"};
+    return v;
+  }
+ private:
+  TicTacToe g_;
+  int sel_ = 4;
+};
+
+class GuessScreen : public Screen {  // number keys are the natural input here
+ public:
+  explicit GuessScreen(AppManager& m) : m_(m), g_(seed(m)) {}
+  bool onKey(Key k) override {
+    int d = digitOf(k);
+    if (d >= 0 && !won_ && buf_.size() < 3) { buf_ += char('0' + d); note_.clear(); }
+    else if ((k == Key::Soft2 || k == Key::Back) && !buf_.empty()) { buf_.pop_back(); note_.clear(); }
+    else if (k == Key::Ok || k == Key::Soft1) {
+      if (won_) { g_ = Guess(seed(m_) + ++rounds_); won_ = false; buf_.clear(); note_.clear(); return true; }
+      if (buf_.empty()) return true;
+      Guess::Result r = g_.guess(std::atoi(buf_.c_str()));
+      buf_.clear();
+      if (r == Guess::Invalid) note_ = "Pick 1 to 100";
+      else if (r == Guess::Low) note_ = "Higher";
+      else if (r == Guess::High) note_ = "Lower";
+      else { won_ = true; note_ = "Correct! " + std::to_string(g_.tries()) + (g_.tries() == 1 ? " try" : " tries"); }
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Number guess";
+    v.layout = Layout::Dial;
+    v.lines = {buf_, note_.empty() && !won_ ? "I am thinking of 1 to 100" : note_};
+    v.keys = {won_ ? "Again" : "Guess", "", buf_.empty() ? "Back" : "Clear"};
+    return v;
+  }
+ private:
+  static uint32_t seed(AppManager& m) { return uint32_t(m.nowMs() & 0xFFFFFFFFLL) | 1u; }
+  AppManager& m_;
+  Guess g_;
+  std::string buf_, note_;
+  bool won_ = false;
+  uint32_t rounds_ = 0;
+};
+
 struct Net { const char* ssid; bool secured, saved; };
 const Net kNets[] = {{"Home-5G", true, true}, {"Office", true, true}, {"CafeFree", false, false}, {"Neighbor", true, false}};
 
@@ -848,8 +1091,12 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
                                                                 {fixed("Call history", {}, "history"), [&m] { return makeCallHistory(m); }}})),
       tile("Messages", "mail", "Messages", [&m] { return makeMessages(m); }),
       tile("Camera", "camera", "Camera", [&m] { return makeCamera(m); }),
+      tile("Calendar", "calendar", "Calendar", [&m] { return makeCalendar(m); }),
       tile("Clock", "clock", "Clock & Alarms", group("Clock", {{fixed("Clock", {}, "clock", "Time and stopwatch"), [&m] { return makeClock(m); }},
                                                                 {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
+      tile("Games", "games", "Snake & more", group("Games", {{fixed("Snake", {}, "games"), [&m] { return makeSnake(m); }},
+                                                             {fixed("Tic-Tac-Toe", {}, "games"), [&m] { return makeTicTacToe(m); }},
+                                                             {fixed("Number guess", {}, "games"), [&m] { return makeGuess(m); }}})),
       tile("Tools", "calc", "Calculator & Files", group("Tools", {{fixed("Calculator", {}, "calc"), [&m] { return makeCalculator(m); }},
                                                                   {fixed("File manager", {}, "files"), [&m] { return makeFiles(m); }}})),
       tile("System", "settings", "Settings & Connectivity", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
@@ -999,6 +1246,10 @@ std::unique_ptr<Screen> makeSimManager(AppManager& m) {
 
 std::unique_ptr<Screen> makeAccounts(AppManager& m) { return std::make_unique<AccountsScreen>(m); }
 std::unique_ptr<Screen> makeVpn(AppManager& m) { return std::make_unique<VpnScreen>(m); }
+std::unique_ptr<Screen> makeCalendar(AppManager& m) { return std::make_unique<CalendarScreen>(m); }
+std::unique_ptr<Screen> makeSnake(AppManager& m) { return std::make_unique<SnakeScreen>(m); }
+std::unique_ptr<Screen> makeTicTacToe(AppManager& m) { return std::make_unique<TicTacToeScreen>(m); }
+std::unique_ptr<Screen> makeGuess(AppManager& m) { return std::make_unique<GuessScreen>(m); }
 std::unique_ptr<Screen> makeNotifications(AppManager& m) { return std::make_unique<NotificationsScreen>(m); }
 std::unique_ptr<Screen> makeBattery(AppManager& m) { return std::make_unique<BatteryScreen>(m); }
 std::unique_ptr<Screen> makeFiles(AppManager& m) { return std::make_unique<FilesScreen>(m, ""); }

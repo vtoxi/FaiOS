@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include "accounts.h"
+#include "events.h"
 #include "network.h"
 #include "vpn.h"
 #include "screen.h"
@@ -48,6 +49,8 @@ class AppManager {
   std::function<long long()> nowMs = [] {  // monotonic ms; tests inject a fake
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   };
+  EventStore* events = nullptr;           // null = calendar storage unavailable
+  std::function<std::time_t()> wall = [] { return std::time(nullptr); };  // wall clock (tests inject a fixed date)
   NetworkManager* net = nullptr;          // null = network service unavailable
   VpnStore* vpnStore = nullptr;
   VpnManager* vpn = nullptr;
@@ -62,6 +65,7 @@ class AppManager {
   void goHome();
   void handleKey(Key k);
   void requestPop(int n = 1) { pendingPops_ += n; }  // pop after the current key handler returns (safe from inside onKey)
+  void frame();  // ~20 Hz: lets the top screen animate (games). Redraws only if it reports a change.
   void tick(std::time_t now);                         // call about once a second: fires due alarms as notifications
   SystemStatus status() const;
   void loadSettings();  // config -> device/power

@@ -70,7 +70,7 @@ static const Ic kIcons[] = {
     {"bluetooth", LV_SYMBOL_BLUETOOTH, 0x60A5FA}, {"brightness", LV_SYMBOL_EYE_OPEN, 0xF59E0B},
     {"info", LV_SYMBOL_FILE, 0x94A3B8},          {"call_in", LV_SYMBOL_CALL, 0x22C55E},
     {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444},
-    {"vpn", LV_SYMBOL_EYE_CLOSE, 0x38BDF8},      {"accounts", LV_SYMBOL_HOME, 0xA78BFA},      {"calendar", LV_SYMBOL_DIRECTORY, 0x34D399},
+    {"vpn", LV_SYMBOL_EYE_CLOSE, 0x38BDF8},      {"accounts", LV_SYMBOL_HOME, 0xA78BFA},      {"calendar", LV_SYMBOL_EDIT, 0x34D399},      {"games", LV_SYMBOL_PLAY, 0xFB7185},
     {"clock", LV_SYMBOL_LOOP, 0xF472B6},         {"alarm", LV_SYMBOL_BELL, 0xFB923C},
     {"files", LV_SYMBOL_DIRECTORY, 0xFBBF24},    {"folder", LV_SYMBOL_DIRECTORY, 0xFBBF24},
     {"file", LV_SYMBOL_FILE, 0x94A3B8},          {"connect", LV_SYMBOL_GPS, 0x22D3EE},
@@ -228,6 +228,49 @@ static void drawBattery(lv_obj_t* scr, const View& v, int top) {
   label(scr, v.lines[4], F12, C_OFF, 8, top + 206, W - 16, LV_TEXT_ALIGN_CENTER);
 }
 
+static void drawBoard(lv_obj_t* scr, const View& v, int top) {
+  label(scr, v.lines[0], F14, C_DIM, 0, top + 2, W, LV_TEXT_ALIGN_CENTER);
+  const int rows = int(v.lines.size()) - 1;
+  if (rows < 1) return;
+  const int cols = int(v.lines[1].size());
+  const int availW = W - 16, availH = (H - SOFT - 6) - (top + 24);
+  const int cell = std::min(availW / cols, availH / rows), bw = cell * cols, bh = cell * rows;
+  const int x0 = (W - bw) / 2, y0 = top + 24 + (availH - bh) / 2;
+  rr(scr, x0 - 2, y0 - 2, bw + 4, bh + 4, 6, C_SURF);
+  const bool ttt = rows == 3 && cols == 3;  // Tic-Tac-Toe: big rounded cells with a cursor; Snake: plain cells
+  for (int y = 0; y < rows; y++)
+    for (int x = 0; x < cols; x++) {
+      const char c = v.lines[1 + y][x];
+      const bool sel = y * cols + x == v.selected;
+      const int px = x0 + x * cell, py = y0 + y * cell;
+      if (ttt) {
+        rr(scr, px + 2, py + 2, cell - 4, cell - 4, 8, sel ? C_ACC : C_SURF2);
+        if (c == 'X' || c == 'O')
+          label(scr, std::string(1, c), F48, sel ? 0xFFFFFF : (c == 'X' ? 0x60A5FA : 0xF59E0B), px, py + (cell - lv_font_get_line_height(F48)) / 2, cell, LV_TEXT_ALIGN_CENTER);
+      } else if (c == 'o') rr(scr, px + 1, py + 1, cell - 2, cell - 2, 4, 0x22C55E);
+      else if (c == '@') rr(scr, px + 1, py + 1, cell - 2, cell - 2, 5, 0x86EFAC);
+      else if (c == '*') rr(scr, px + 3, py + 3, cell - 6, cell - 6, (cell - 6) / 2, C_DANGER);
+    }
+}
+
+static void drawCalendar(lv_obj_t* scr, const View& v, int top) {
+  const int offset = std::atoi(v.lines[1].c_str()), days = std::atoi(v.lines[2].c_str());
+  const int sel = std::atoi(v.lines[3].c_str()), today = std::atoi(v.lines[4].c_str());
+  const std::string& mask = v.lines[6];
+  label(scr, v.lines[0], F20, C_TXT, 0, top, W, LV_TEXT_ALIGN_CENTER);
+  static const char* const hdr[] = {"M", "T", "W", "T", "F", "S", "S"};
+  const int colW = (W - 16) / 7, x0 = 8 + ((W - 16) - colW * 7) / 2, rowH = 27, gy = top + 44;
+  for (int i = 0; i < 7; i++) label(scr, hdr[i], F12, i >= 5 ? 0xFCA5A5 : C_DIM, x0 + i * colW, top + 28, colW, LV_TEXT_ALIGN_CENTER);
+  for (int d = 1; d <= days; d++) {
+    const int idx = offset + d - 1, col = idx % 7, px = x0 + col * colW, py = gy + (idx / 7) * rowH;
+    if (d == sel) rr(scr, px + 1, py, colW - 2, rowH - 2, 8, C_ACC);
+    else if (d == today) rr(scr, px + 1, py, colW - 2, rowH - 2, 8, C_SURF2);
+    label(scr, std::to_string(d), F14, d == sel ? 0xFFFFFF : (col >= 5 ? 0xFCA5A5 : C_TXT), px, py + 4, colW, LV_TEXT_ALIGN_CENTER);
+    if (size_t(d - 1) < mask.size() && mask[d - 1] == '1') rr(scr, px + colW / 2 - 2, py + rowH - 8, 4, 4, 2, d == sel ? 0xFFFFFF : C_ACC);
+  }
+  label(scr, v.lines[5], F14, C_DIM, 0, gy + 6 * rowH + 4, W, LV_TEXT_ALIGN_CENTER);
+}
+
 static void drawCamera(lv_obj_t* scr, const View& v, int top) {
   const int x = 10, y = top + 4, w = W - 20, h = 168;
   rr(scr, x, y, w, h, 10, 0x05080F);
@@ -309,6 +352,8 @@ static void render() {
       case Layout::Calc: drawCalc(scr, v, top); break;
       case Layout::Camera: drawCamera(scr, v, top); break;
       case Layout::Battery: drawBattery(scr, v, top); break;
+      case Layout::Board: drawBoard(scr, v, top); break;
+      case Layout::Calendar: drawCalendar(scr, v, top); break;
       default: drawList(scr, v, top, H - SOFT); break;
     }
   }
@@ -439,6 +484,9 @@ int main(int argc, char** argv) {
   g_mgr.net = &network;
   g_mgr.vpnStore = &vpnStore;
   g_mgr.vpn = &vpn;
+  EventStore events(storage);  // local calendar events
+  events.load();
+  g_mgr.events = &events;
   if (vpnDemo && !storage.exists("import/demo.conf") && vpnStore.profiles().empty()) storage.write("import/demo.conf", demoWgConfig());
   if (mockGoogle)
     g_mgr.mockSignIn = [&] {
@@ -449,10 +497,12 @@ int main(int argc, char** argv) {
 
   g_mgr.onChange = [] { g_dirty = true; };
   g_mgr.push(makeHome(g_mgr));
-  lv_timer_create([](lv_timer_t*) {  // clock tick: 10 Hz on Clock (stopwatch), 1 Hz on Home
+  lv_timer_create([](lv_timer_t*) {  // 20 Hz: game frames; 10 Hz redraw on the Clock (stopwatch); 1 Hz services and Home clock
     static int n = 0;
+    n++;
+    g_mgr.frame();
     Layout l = g_mgr.top()->view().layout;
-    bool second = ++n % 10 == 0;
+    bool second = n % 20 == 0;
     if (second) {
       g_mgr.tick(std::time(nullptr));  // fires due alarms, polls links, drives the VPN
       if (g_mgr.vpn) {                 // redraw when the tunnel state changes
@@ -462,8 +512,8 @@ int main(int argc, char** argv) {
         if (cur != lastVpn) { lastVpn = cur; g_dirty = true; }
       }
     }
-    if (l == Layout::Clock || (l == Layout::Home && second)) g_dirty = true;
-  }, 100, nullptr);
+    if ((l == Layout::Clock && n % 2 == 0) || (l == Layout::Home && second)) g_dirty = true;
+  }, 50, nullptr);
 
   if (!script.empty()) { runScript(script, shotsDir); services.stopAll(); return 0; }
 

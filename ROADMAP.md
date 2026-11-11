@@ -81,3 +81,9 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] IP/endpoint parsing, WireGuard config parser (script hooks refused), command + kill-switch + DNS generators, NetworkManager, VPN store (sealed keys), VPN state machine, command backend, Connectivity -> VPN screens. **738 checks pass; a mutation check (build/scripts/mutation-check.py) confirmed the tests catch 13 deliberate breakages in the secret, kill-switch, routing and DNS logic.**
 - [ ] **Not verified against a real tunnel.** Next: Buildroot QEMU image with WireGuard + nftables + netns pair (see docs/NETWORK_VPN.md)
 - [ ] Real link provider, real DNS writer, userspace WireGuard decision (needs phone kernel/RAM), OpenVPN, browser abstraction
+
+## Games + Calendar (2026-11-11)
+- [x] Games: Snake (speeds up, pause, retry), Tic-Tac-Toe (computer wins/blocks/takes centre, otherwise random: beatable), Number guess. Logic in `core/games.*`, deterministic by seed. Menu: Games group
+- [x] Calendar: Monday-first month grid, today/selection, day agenda, local events (add by time, delete, persisted in `calendar/local.json`, each event records its source for later account sync). **Event titles cannot be typed yet** (no text entry): new events are titled "Event"
+- [x] 2962 checks pass (found and fixed: whitespace-only event titles)
+- [ ] Not built: event titles/editing, recurring events, reminders, time zones, Google Calendar sync

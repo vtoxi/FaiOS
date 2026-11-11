@@ -13,17 +13,18 @@ static int failures = 0, checks = 0;
 static std::string title(AppManager& m) { return m.top()->view().title; }
 static void press(AppManager& m, Key k) { m.handleKey(k); }
 
-// Menu paths: {app, top-level tile (1..6), item inside the tile (0 = tile opens the app directly)}.
-// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Clock, 5 Tools, 6 System.
+// Menu paths: {app, top-level tile (1..8), item inside the tile (0 = tile opens the app directly)}.
+// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Calendar, 5 Clock, 6 Games, 7 Tools, 8 System.
 struct AppPath { const char* name; int top, sub; const char* title; int downs; };  // downs >= 0: Down x N then OK inside the item
 static const AppPath kApps[] = {
     {"Dialer", 1, 1, "Phone", -1},   {"Contacts", 1, 2, "Contacts", -1},    {"Call history", 1, 3, "Call history", -1},
-    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1},
-    {"Clock", 4, 1, "Clock", -1},    {"Alarms", 4, 2, "Alarms", -1},
-    {"Calculator", 5, 1, "Calculator", -1}, {"Files", 5, 2, "Files", -1},
-    {"Settings", 6, 1, "Settings", -1}, {"Connectivity", 6, 2, "Connectivity", -1}, {"Battery", 6, 3, "Battery", -1},
+    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1}, {"Calendar", 4, 0, "Calendar", -1},
+    {"Clock", 5, 1, "Clock", -1},    {"Alarms", 5, 2, "Alarms", -1},
+    {"Snake", 6, 1, "Snake", -1}, {"Tic-Tac-Toe", 6, 2, "Tic-Tac-Toe", -1}, {"Number guess", 6, 3, "Number guess", -1},
+    {"Calculator", 7, 1, "Calculator", -1}, {"Files", 7, 2, "Files", -1},
+    {"Settings", 8, 1, "Settings", -1}, {"Connectivity", 8, 2, "Connectivity", -1}, {"Battery", 8, 3, "Battery", -1},
     // reached through Connectivity (one owner each): rows are Wi-Fi, Wi-Fi networks, Bluetooth, Mobile data, Airplane, VPN, Hotspot, SIM manager
-    {"VPN", 6, 2, "VPN", 5}, {"Hotspot", 6, 2, "Hotspot", 6}, {"SIM manager", 6, 2, "SIM manager", 7}};
+    {"VPN", 8, 2, "VPN", 5}, {"Hotspot", 8, 2, "Hotspot", 6}, {"SIM manager", 8, 2, "SIM manager", 7}};
 
 // From Home: open the menu, then the tile, then the item.
 static void launch(AppManager& m, const char* app) {
@@ -76,7 +77,7 @@ static void test_grouped_menu() {
   auto* m = boot();
   press(*m, Key::Ok);
   auto v = m->top()->view();
-  CHECK(v.layout == Layout::Grid && v.rows.size() == 6);
+  CHECK(v.layout == Layout::Grid && v.rows.size() == 8);
   CHECK(v.rows[0].text == "Phone" && v.rows[0].sub == "Phone & Contacts");
   press(*m, Key::Num1);  // Phone tile opens a short list, not the dialer
   v = m->top()->view();
@@ -94,21 +95,25 @@ static void test_grouped_menu() {
   delete m;
 }
 
-static void test_grid_navigation() {  // launcher: 6 tiles, 3 columns
+static void test_grid_navigation() {  // launcher: 8 tiles, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 6);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 8);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
   CHECK(sel() == 1);
   press(*m, Key::Down);  // 1 + 3 = 4
   CHECK(sel() == 4);
+  press(*m, Key::Down);  // 7
+  CHECK(sel() == 7);
   press(*m, Key::Down);  // no row below: wraps to top of the column
   CHECK(sel() == 1);
   press(*m, Key::Up);    // wraps to bottom of the column
-  CHECK(sel() == 4);
+  CHECK(sel() == 7);
   press(*m, Key::Left);
+  CHECK(sel() == 6);
+  press(*m, Key::Up);
   CHECK(sel() == 3);
   press(*m, Key::Up);
   CHECK(sel() == 0);
@@ -217,7 +222,7 @@ static void test_one_owner_per_setting() {
   CHECK(wifi == 1 && bt == 1 && hs == 1 && sims == 1);
   press(*m, Key::End);
   press(*m, Key::Ok);
-  press(*m, Key::Num6);  // System group: Settings, Connectivity, Battery (no separate Hotspot / SIM entries)
+  press(*m, Key::Num8);  // System group: Settings, Connectivity, Battery (no separate Hotspot / SIM entries)
   auto v = m->top()->view();
   CHECK(v.rows.size() == 3 && v.rows[0].text == "Settings" && v.rows[1].text == "Connectivity" && v.rows[2].text == "Battery");
   delete m;
@@ -354,6 +359,7 @@ static void test_settings_persist() {
 #include "test_more_apps.inc"
 #include "test_accounts.inc"
 #include "test_vpn.inc"
+#include "test_games.inc"
 
 int main() {
   test_launcher_and_back();
@@ -422,6 +428,17 @@ int main() {
   test_vpn_screens();
   test_vpn_import_screen();
   test_vpn_tick_runs_through_app_manager();
+  test_rng();
+  test_snake_logic();
+  test_tictactoe_logic();
+  test_guess_logic();
+  test_calendar_math();
+  test_event_store();
+  test_snake_screen();
+  test_tictactoe_screen();
+  test_guess_screen();
+  test_calendar_screens();
+  test_frame_is_harmless_on_other_screens();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();

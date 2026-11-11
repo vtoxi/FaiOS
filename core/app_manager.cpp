@@ -43,6 +43,10 @@ void AppManager::handleKey(Key k) {
   changed();
 }
 
+void AppManager::frame() {
+  if (top() && top()->onTick(nowMs())) changed();
+}
+
 void AppManager::tick(std::time_t now) {
   if (net) net->poll();   // link changes reach the VPN manager through its listener
   if (vpn) vpn->tick();

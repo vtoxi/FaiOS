@@ -17,7 +17,7 @@ bool keyFromName(const std::string& name, Key& out);  // used for the configurab
 
 struct Softkeys { std::string left, center, right; };
 
-enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera, Battery };
+enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera, Battery, Board, Calendar };
 
 // One list/grid entry. lead: icon name ("call", "wifi", ...) or "@A" for a letter avatar.
 struct Row {
@@ -31,6 +31,8 @@ struct Row {
 //   List/Grid: rows + selected.  Home: lines = {time, date[, badge text]}.
 //   Text: lines (wrapped body) + optional lead avatar.  Dial: lines = {number, note}.
 //   Clock: lines = {HH:MM, date, stopwatch}.  Calc: lines = {pending expression, display}.  Camera: lines = {note, photo count}.  Battery: lines = {percent, state, voltage, temperature, note}.
+//   Board: lines[0] = status, lines[1..] = rows of cell characters ('.', 'o', '@', '*', 'X', 'O'); selected = highlighted cell (row-major).
+//   Calendar: lines = {month title, offset of the 1st (Mon=0), days in month, selected day, today (0 = not this month), caption, per-day event mask}.
 struct View {
   std::string title;
   Layout layout = Layout::List;
@@ -47,6 +49,8 @@ class Screen {
   // Return true if the key was consumed. Unconsumed Back/Soft2 pops the screen.
   virtual bool onKey(Key k) = 0;
   virtual View view() const = 0;
+  // Called about every 50 ms with a monotonic clock (games). Return true if the view changed.
+  virtual bool onTick(long long /*nowMs*/) { return false; }
 };
 
 }  // namespace fai
