@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include "calc.h"
 #include "screens.h"
 
 using namespace fai;
@@ -44,21 +45,25 @@ static void test_five_apps_via_digit_shortcuts() {
   }
 }
 
-static void test_grid_navigation() {  // launcher: 5 items, 3 columns
+static void test_grid_navigation() {  // launcher: 10 items, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 5);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 10);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
   CHECK(sel() == 1);
   press(*m, Key::Down);  // 1 + 3 = 4
   CHECK(sel() == 4);
+  press(*m, Key::Down);  // 7
+  CHECK(sel() == 7);
   press(*m, Key::Down);  // no row below: wraps to top of the column
   CHECK(sel() == 1);
   press(*m, Key::Up);    // wraps to bottom of the column
-  CHECK(sel() == 4);
+  CHECK(sel() == 7);
   press(*m, Key::Left);
+  CHECK(sel() == 6);
+  press(*m, Key::Up);
   CHECK(sel() == 3);
   press(*m, Key::Up);
   CHECK(sel() == 0);
@@ -280,6 +285,8 @@ static void test_settings_persist() {
   CHECK(m2.power->brightness() == 80);
 }
 
+#include "test_apps.inc"
+
 int main() {
   test_launcher_and_back();
   test_five_apps_via_digit_shortcuts();
@@ -299,6 +306,12 @@ int main() {
   test_power_and_status();
   test_service_lifecycle();
   test_settings_persist();
+  test_calc_logic();
+  test_calc_screen_keys();
+  test_clock_stopwatch();
+  test_camera_and_gallery();
+  test_sim_manager_and_hotspot();
+  test_launcher_has_all_apps();
   std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
   return failures ? 1 : 0;
 }

@@ -9,3 +9,6 @@
 7. **Services in one header** (`services.h`) — each is tiny; split per file when one grows. Storage keys are relative names only (no `..`, no absolute) so a bad caller can't escape the data dir.
 8. **Battery/brightness moved from `Device` to `IPower`** so real hardware can replace the simulated source behind one interface.
 9. **Richer View model** (`Layout` + `Row`: lead icon/avatar, sub-text, trailing text, toggle, unread, tone) so the renderer stays dumb while screens look professional. Icons are LVGL built-in symbols, avatars are coloured letter circles: no image assets to ship. Theme colours are constants at the top of `simulator/main.cpp`.
+10. **Calculator is a separate `Calc` class** (core/calc.cpp) with left-to-right chaining, so the maths is unit-tested without any UI. Operators sit on the arrow keys because feature phones have no operator keys.
+11. **Hotspot refuses without an active data SIM** and raises a notification; enabling it turns the simulated Wi-Fi client off. Rules are simulated stand-ins for the real network stack.
+12. **No signal when no SIM is enabled** (`AppManager::status()`), so the SIM manager visibly affects the status bar.

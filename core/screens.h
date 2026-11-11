@@ -13,5 +13,11 @@ std::unique_ptr<Screen> makeContacts(AppManager& m);
 std::unique_ptr<Screen> makeMessages(AppManager& m);
 std::unique_ptr<Screen> makeCallHistory(AppManager& m);
 std::unique_ptr<Screen> makeSettings(AppManager& m);
+std::unique_ptr<Screen> makeClock(AppManager& m);
+std::unique_ptr<Screen> makeCalculator(AppManager& m);
+std::unique_ptr<Screen> makeCamera(AppManager& m);
+std::unique_ptr<Screen> makeGallery(AppManager& m);
+std::unique_ptr<Screen> makeHotspot(AppManager& m);
+std::unique_ptr<Screen> makeSimManager(AppManager& m);
 
 }  // namespace fai

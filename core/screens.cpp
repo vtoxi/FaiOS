@@ -1,4 +1,6 @@
 #include "screens.h"
+#include "calc.h"
+#include <cstdio>
 #include <ctime>
 #include <functional>
 
@@ -49,7 +51,7 @@ class ListScreen : public Screen {
     else if (grid && k == Key::Left) sel_ = (sel_ + n - 1) % n;
     else if (grid && k == Key::Right) sel_ = (sel_ + 1) % n;
     else if (k == Key::Ok || k == Key::Soft1) run();
-    else if (numbered_ && d >= 1 && d <= n) { sel_ = d - 1; run(); }
+    else if (numbered_ && d >= 0 && (d ? d - 1 : 9) < n) { sel_ = d ? d - 1 : 9; run(); }  // 1..9, 0 = tenth
     else return false;
     return true;
   }
@@ -168,6 +170,92 @@ class HomeScreen : public Screen {
   AppManager& m_;
 };
 
+class ClockScreen : public Screen {  // time of day + stopwatch (injectable clock via AppManager::nowMs)
+ public:
+  explicit ClockScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    if (k == Key::Ok) {
+      if (running_) { accum_ += m_.nowMs() - start_; running_ = false; }
+      else { start_ = m_.nowMs(); running_ = true; }
+    } else if (k == Key::Soft1 && !running_) accum_ = 0;
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Clock";
+    v.layout = Layout::Clock;
+    std::time_t t = std::time(nullptr);
+    char hm[8], date[32], sw[24];
+    std::strftime(hm, sizeof hm, "%H:%M", std::localtime(&t));
+    std::strftime(date, sizeof date, "%A, %d %B", std::localtime(&t));
+    long long ms = accum_ + (running_ ? m_.nowMs() - start_ : 0);
+    std::snprintf(sw, sizeof sw, "%02lld:%02lld.%lld", ms / 60000, ms / 1000 % 60, ms / 100 % 10);
+    v.lines = {hm, date, sw};
+    v.keys = {"Reset", running_ ? "Stop" : "Start", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  bool running_ = false;
+  long long start_ = 0, accum_ = 0;
+};
+
+// Keys: digits, * = ".", Up + / Down - / Left x / Right /, OK or # = equals.
+class CalcScreen : public Screen {
+ public:
+  bool onKey(Key k) override {
+    int d = digitOf(k);
+    if (d >= 0) c_.digit(d);
+    else if (k == Key::Star) c_.dot();
+    else if (k == Key::Up) c_.op('+');
+    else if (k == Key::Down) c_.op('-');
+    else if (k == Key::Left) c_.op('*');
+    else if (k == Key::Right) c_.op('/');
+    else if (k == Key::Ok || k == Key::Pound) c_.equals();
+    else if (k == Key::Soft1) c_.clear();
+    else if ((k == Key::Soft2 || k == Key::Back) && c_.canBackspace()) c_.backspace();
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Calculator";
+    v.layout = Layout::Calc;
+    v.lines = {c_.expr(), c_.display()};
+    v.keys = {"Clear", "=", c_.canBackspace() ? "Del" : "Back"};
+    return v;
+  }
+ private:
+  Calc c_;
+};
+
+class CameraScreen : public Screen {  // SIMULATED: no camera hardware; "captures" are names only
+ public:
+  explicit CameraScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    if (k == Key::Ok) {
+      char name[16];
+      std::snprintf(name, sizeof name, "IMG_%04d", int(m_.device.photos.size()) + 1);
+      m_.device.photos.push_back(name);
+      note_ = std::string("Saved ") + name + " (simulated)";
+    } else if (k == Key::Soft1) m_.push(makeGallery(m_));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Camera";
+    v.layout = Layout::Camera;
+    v.lines = {note_, std::to_string(m_.device.photos.size())};
+    v.keys = {"Gallery", "Capture", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  std::string note_;
+};
+
 struct Contact { const char *name, *number; };
 const Contact kContacts[] = {{"Ali", "0300 1112233"}, {"Mum", "0321 4445566"}, {"Office", "042 35001234"}, {"Zara", "0333 7778899"}};
 
@@ -189,7 +277,12 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
            fixed("Contacts", [&m] { m.push(makeContacts(m)); }, "contacts", "Contacts"),
            fixed("Messages", [&m] { m.push(makeMessages(m)); }, "mail", "Messages"),
            fixed("History", [&m] { m.push(makeCallHistory(m)); }, "history", "Call history"),
-           fixed("Settings", [&m] { m.push(makeSettings(m)); }, "settings", "Settings")};
+           fixed("Settings", [&m] { m.push(makeSettings(m)); }, "settings", "Settings"),
+           fixed("Clock", [&m] { m.push(makeClock(m)); }, "clock", "Clock"),
+           fixed("Calc", [&m] { m.push(makeCalculator(m)); }, "calc", "Calculator"),
+           fixed("Camera", [&m] { m.push(makeCamera(m)); }, "camera", "Camera"),
+           fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot", "Hotspot"),
+           fixed("SIM", [&m] { m.push(makeSimManager(m)); }, "sim", "SIM manager")};
   return std::make_unique<ListScreen>("Menu", std::move(it), "Open", true, 3);
 }
 
@@ -252,6 +345,93 @@ std::unique_ptr<Screen> makeSettings(AppManager& m) {
   it.push_back(std::move(br));
   it.push_back(std::move(about));
   return std::make_unique<ListScreen>("Settings", std::move(it), "Change");
+}
+
+std::unique_ptr<Screen> makeClock(AppManager& m) { return std::make_unique<ClockScreen>(m); }
+std::unique_ptr<Screen> makeCalculator(AppManager&) { return std::make_unique<CalcScreen>(); }
+std::unique_ptr<Screen> makeCamera(AppManager& m) { return std::make_unique<CameraScreen>(m); }
+
+std::unique_ptr<Screen> makeGallery(AppManager& m) {
+  if (m.device.photos.empty()) return std::make_unique<TextScreen>("Gallery", std::vector<std::string>{"No photos yet"}, "camera");
+  Items it;
+  for (auto& p : m.device.photos) it.push_back(fixed(p, {}, "image", "Simulated placeholder"));
+  return std::make_unique<ListScreen>("Gallery", std::move(it), "");
+}
+
+std::unique_ptr<Screen> makeHotspot(AppManager& m) {
+  Item on = fixed("Hotspot", [&m] {
+    auto& d = m.device;
+    if (!d.hotspot && !(d.simActive() && d.dataSim >= 0)) {  // needs an active data SIM
+      m.notifications.add("Hotspot", "No active SIM for mobile data");
+      m.log.log(Level::Warn, "hotspot", "refused: no active data SIM");
+      return;
+    }
+    d.hotspot = !d.hotspot;
+    if (d.hotspot) d.wifi = false;  // the Wi-Fi radio can't be client and AP at once (simulated rule)
+    m.saveSettings();
+  }, "hotspot", "Shares mobile data");
+  on.toggle = [&m] { return m.device.hotspot ? 1 : 0; };
+  Item name = fixed("Network name", {}, "info");
+  name.sub = [&m] { return m.device.hotspotName; };
+  Item pass = fixed("Password", {}, "info", "********");
+  Item clients = fixed("Connected devices", {}, "info");
+  clients.trail = [&m] { return std::to_string(m.device.hotspotClients()); };
+  Items it;
+  it.push_back(std::move(on));
+  it.push_back(std::move(name));
+  it.push_back(std::move(pass));
+  it.push_back(std::move(clients));
+  return std::make_unique<ListScreen>("Hotspot", std::move(it), "Toggle");
+}
+
+static std::unique_ptr<Screen> makeSimDetail(AppManager& m, int slot) {
+  auto sim = [&m, slot]() -> Device::Sim& { return m.device.sims[slot]; };
+  Item en = fixed("Enabled", [&m, slot, sim] {
+    sim().enabled = !sim().enabled;
+    if (!sim().enabled && m.device.dataSim == slot) {  // hand data to another active SIM, else none
+      m.device.dataSim = -1;
+      for (size_t i = 0; i < m.device.sims.size(); i++)
+        if (int(i) != slot && m.device.sims[i].present && m.device.sims[i].enabled) m.device.dataSim = int(i);
+    }
+    m.saveSettings();
+  }, "sim");
+  en.toggle = [sim] { return sim().enabled ? 1 : 0; };
+  Item data = fixed("Use for data", [&m, slot, sim] {
+    if (sim().enabled) { m.device.dataSim = slot; m.saveSettings(); }
+  }, "sim");
+  data.toggle = [&m, slot] { return m.device.dataSim == slot ? 1 : 0; };
+  Item pin = fixed("PIN lock", [sim] { sim().pinLock = !sim().pinLock; }, "sim", "Simulated: no PIN stored");
+  pin.toggle = [sim] { return sim().pinLock ? 1 : 0; };
+  Item num = fixed("Number", {}, "info");
+  num.sub = [sim] { return sim().number; };
+  Items it;
+  it.push_back(std::move(en));
+  it.push_back(std::move(data));
+  it.push_back(std::move(pin));
+  it.push_back(std::move(num));
+  return std::make_unique<ListScreen>("SIM " + std::to_string(slot + 1), std::move(it), "Toggle");
+}
+
+std::unique_ptr<Screen> makeSimManager(AppManager& m) {
+  Items it;
+  for (size_t i = 0; i < m.device.sims.size(); i++) {
+    int slot = int(i);
+    Item r = fixed("SIM " + std::to_string(i + 1), [&m, slot] {
+      if (m.device.sims[slot].present) m.push(makeSimDetail(m, slot));
+      else m.push(std::make_unique<TextScreen>("SIM " + std::to_string(slot + 1), std::vector<std::string>{"No SIM inserted"}, "sim"));
+    }, "sim");
+    r.sub = [&m, slot] {
+      auto& s = m.device.sims[slot];
+      return s.present ? s.carrier + "  " + s.number : std::string("Empty");
+    };
+    r.trail = [&m, slot] {
+      auto& s = m.device.sims[slot];
+      if (!s.present) return std::string();
+      return m.device.dataSim == slot && s.enabled ? std::string("Data") : std::string(s.enabled ? "On" : "Off");
+    };
+    it.push_back(std::move(r));
+  }
+  return std::make_unique<ListScreen>("SIM manager", std::move(it), "Open");
 }
 
 }  // namespace fai

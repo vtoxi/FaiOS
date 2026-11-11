@@ -34,3 +34,8 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] Contact card has a Call softkey that opens the dialer prefilled
 - [x] Visual check in the live window: user approved the look
 - [ ] No animations/transitions yet (renderer rebuilds the whole screen per change)
+
+## More apps (simulated)
+- [x] Clock (time/date + stopwatch), Calculator (logic class + screen), Camera (simulated viewfinder, capture, gallery), Hotspot (toggle, needs an active data SIM, shows SSID/clients), SIM manager (slots, enable, data SIM, PIN-lock flag). Unit-tested; launcher is now a scrolling 10-app grid (key 0 = tenth)
+- All data is simulated. Camera has no hardware; SIM slot count (2 shown, 1 empty) is a placeholder until the modem HAL reports real slots. Hotspot/SIM state persists in `config.ini`; PIN lock stores no PIN.
+- [ ] Not built: File manager, Connectivity, Battery info apps; alarms; real camera/modem

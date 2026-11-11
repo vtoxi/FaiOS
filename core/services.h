@@ -147,7 +147,7 @@ class ServiceManager {
 // ---- System status snapshot (what the status bar needs) -----------------------
 struct SystemStatus {
   int signal = 0, battery = 0, brightness = 0, badge = 0;  // badge = unread messages + notifications
-  bool charging = false, wifi = false, bluetooth = false;
+  bool charging = false, wifi = false, bluetooth = false, hotspot = false;
 };
 
 }  // namespace fai

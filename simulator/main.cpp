@@ -64,7 +64,10 @@ static const Ic kIcons[] = {
     {"settings", LV_SYMBOL_SETTINGS, 0x94A3B8},  {"wifi", LV_SYMBOL_WIFI, 0x60A5FA},
     {"bluetooth", LV_SYMBOL_BLUETOOTH, 0x60A5FA}, {"brightness", LV_SYMBOL_EYE_OPEN, 0xF59E0B},
     {"info", LV_SYMBOL_FILE, 0x94A3B8},          {"call_in", LV_SYMBOL_CALL, 0x22C55E},
-    {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444}};
+    {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444},
+    {"clock", LV_SYMBOL_BELL, 0xF472B6},         {"calc", LV_SYMBOL_KEYBOARD, 0x2DD4BF},
+    {"camera", LV_SYMBOL_IMAGE, 0xF87171},       {"image", LV_SYMBOL_IMAGE, 0xF87171},
+    {"hotspot", LV_SYMBOL_WIFI, 0x38BDF8},       {"sim", LV_SYMBOL_SD_CARD, 0xFBBF24}};
 
 static const Ic* findIcon(const std::string& n) {
   for (auto& i : kIcons) if (n == i.name) return &i;
@@ -95,6 +98,7 @@ static void drawStatusBar(lv_obj_t* scr, const SystemStatus& st) {
                     : st.battery > 35 ? LV_SYMBOL_BATTERY_2 : st.battery > 10 ? LV_SYMBOL_BATTERY_1 : LV_SYMBOL_BATTERY_EMPTY;
   std::string g;
   if (st.badge) g += std::string(LV_SYMBOL_ENVELOPE) + "  ";
+  if (st.hotspot) g += std::string(LV_SYMBOL_UPLOAD) + "  ";
   if (st.bluetooth) g += std::string(LV_SYMBOL_BLUETOOTH) + "  ";
   if (st.wifi) g += std::string(LV_SYMBOL_WIFI) + "  ";
   g += std::to_string(st.battery) + "% " + (st.charging ? LV_SYMBOL_CHARGE : "") + bat;
@@ -147,20 +151,65 @@ static void drawList(lv_obj_t* scr, const View& v, int top, int bottom) {
 }
 
 static void drawGrid(lv_obj_t* scr, const View& v, int top) {
-  const int cols = 3, tile = 68, gap = 8;
+  // 3 columns, 3 visible rows; scrolls by row when there are more apps.
+  const int cols = 3, tile = 60, gy = 6, gx = (W - cols * tile) / (cols + 1), visRows = 3;
+  const int selRow = v.selected >= 0 ? v.selected / cols : 0, firstRow = selRow >= visRows ? selRow - visRows + 1 : 0;
   for (int i = 0; i < (int)v.rows.size(); i++) {
+    const int row = i / cols - firstRow;
+    if (row < 0 || row >= visRows) continue;
     const Row& r = v.rows[i];
     const bool sel = i == v.selected;
-    const int x = gap + (i % cols) * (tile + gap), y = top + (i / cols) * (tile + gap);
+    const int x = gx + (i % cols) * (tile + gx), y = top + row * (tile + gy);
     rr(scr, x, y, tile, tile, 14, sel ? C_ACC : C_SURF);
-    if (const Ic* ic = findIcon(r.lead)) label(scr, ic->sym, F28, sel ? 0xFFFFFF : ic->col, x, y + 10, tile, LV_TEXT_ALIGN_CENTER);
-    label(scr, r.text, F12, sel ? 0xFFFFFF : C_DIM, x + 2, y + 48, tile - 4, LV_TEXT_ALIGN_CENTER);
+    if (const Ic* ic = findIcon(r.lead)) label(scr, ic->sym, F28, sel ? 0xFFFFFF : ic->col, x, y + 5, tile, LV_TEXT_ALIGN_CENTER);
+    label(scr, r.text, F12, sel ? 0xFFFFFF : C_DIM, x + 2, y + 41, tile - 4, LV_TEXT_ALIGN_CENTER);
   }
   if (v.selected >= 0) {  // full name of the selected app under the grid
-    const int rows = ((int)v.rows.size() + cols - 1) / cols;
     const Row& r = v.rows[v.selected];
-    label(scr, r.sub.empty() ? r.text : r.sub, F20, C_TXT, 0, top + rows * (tile + gap) + 6, W, LV_TEXT_ALIGN_CENTER);
+    label(scr, r.sub.empty() ? r.text : r.sub, F20, C_TXT, 0, top + visRows * (tile + gy) + 2, W, LV_TEXT_ALIGN_CENTER);
   }
+  const int totalRows = ((int)v.rows.size() + cols - 1) / cols;
+  if (totalRows > visRows) {  // page dots on the right edge
+    for (int r = 0; r < totalRows; r++) rr(scr, W - 6, top + 4 + r * 10, 4, 4, 2, r == selRow ? C_ACC : C_LINE);
+  }
+}
+
+static void drawClock(lv_obj_t* scr, const View& v, int top) {
+  label(scr, v.lines[0], F48, C_TXT, 0, top + 4, W, LV_TEXT_ALIGN_CENTER);
+  label(scr, v.lines[1], F16, C_DIM, 0, top + 62, W, LV_TEXT_ALIGN_CENTER);
+  rr(scr, 8, top + 100, W - 16, 84, 14, C_SURF);
+  label(scr, "STOPWATCH", F12, C_DIM, 8, top + 110, W - 16, LV_TEXT_ALIGN_CENTER);
+  label(scr, v.lines[2], F28, C_TXT, 8, top + 134, W - 16, LV_TEXT_ALIGN_CENTER);
+}
+
+static void drawCalc(lv_obj_t* scr, const View& v, int top) {
+  rr(scr, 8, top + 2, W - 16, 78, 14, C_SURF);
+  label(scr, v.lines[0], F14, C_DIM, 18, top + 12, W - 36, LV_TEXT_ALIGN_RIGHT);
+  label(scr, v.lines[1], F28, C_TXT, 18, top + 38, W - 36, LV_TEXT_ALIGN_RIGHT);
+  static const struct { const char* sym; const char* op; } chips[] = {
+      {LV_SYMBOL_UP, "+"}, {LV_SYMBOL_DOWN, "-"}, {LV_SYMBOL_LEFT, "x"}, {LV_SYMBOL_RIGHT, "/"}};
+  for (int i = 0; i < 4; i++) {
+    const int x = 8 + i * 58, y = top + 92;
+    rr(scr, x, y, 54, 40, 10, C_SURF2);
+    label(scr, std::string(chips[i].sym) + " " + chips[i].op, F16, C_ACC, x, y + 11, 54, LV_TEXT_ALIGN_CENTER);
+  }
+  label(scr, "OK or # =    * .", F14, C_DIM, 8, top + 144, W - 16, LV_TEXT_ALIGN_CENTER);
+}
+
+static void drawCamera(lv_obj_t* scr, const View& v, int top) {
+  const int x = 10, y = top + 4, w = W - 20, h = 168;
+  rr(scr, x, y, w, h, 10, 0x05080F);
+  const int c = 16, t = 2, col = 0xFFFFFF;  // corner brackets
+  for (int i = 0; i < 4; i++) {
+    const int cx = x + 8 + (i % 2) * (w - 16 - c), cy = y + 8 + (i / 2) * (h - 16 - c);
+    rr(scr, cx, cy, c, t, 0, col);
+    rr(scr, cx, cy + (i / 2 ? c - t : 0), c, t, 0, col);
+    rr(scr, cx + (i % 2 ? c - t : 0), cy, t, c, 0, col);
+  }
+  label(scr, "SIMULATED PREVIEW", F12, C_DIM, x, y + 70, w, LV_TEXT_ALIGN_CENTER);
+  label(scr, "no camera hardware", F12, C_OFF, x, y + 88, w, LV_TEXT_ALIGN_CENTER);
+  label(scr, v.lines[0].empty() ? "Press OK to capture" : v.lines[0], F14, v.lines[0].empty() ? C_DIM : C_OK, 8, y + h + 8, W - 16, LV_TEXT_ALIGN_CENTER);
+  label(scr, "Photos: " + v.lines[1], F12, C_DIM, 8, y + h + 28, W - 16, LV_TEXT_ALIGN_CENTER);
 }
 
 static void drawDial(lv_obj_t* scr, const View& v, int top) {
@@ -219,6 +268,9 @@ static void render() {
       case Layout::Grid: drawGrid(scr, v, top + 4); break;
       case Layout::Dial: drawDial(scr, v, top); break;
       case Layout::Text: drawText(scr, v, top); break;
+      case Layout::Clock: drawClock(scr, v, top); break;
+      case Layout::Calc: drawCalc(scr, v, top); break;
+      case Layout::Camera: drawCamera(scr, v, top); break;
       default: drawList(scr, v, top, H - SOFT); break;
     }
   }
@@ -277,7 +329,11 @@ int main(int argc, char** argv) {
 
   g_mgr.onChange = [] { g_dirty = true; };
   g_mgr.push(makeHome(g_mgr));
-  lv_timer_create([](lv_timer_t*) { if (g_mgr.top()->view().layout == Layout::Home) g_dirty = true; }, 1000, nullptr);  // clock tick
+  lv_timer_create([](lv_timer_t*) {  // clock tick: 10 Hz on Clock (stopwatch), 1 Hz on Home
+    static int n = 0;
+    Layout l = g_mgr.top()->view().layout;
+    if (l == Layout::Clock || (l == Layout::Home && ++n % 10 == 0)) g_dirty = true;
+  }, 100, nullptr);
 
   while (g_running) {
     lv_timer_handler();

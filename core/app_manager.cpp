@@ -41,7 +41,8 @@ void AppManager::handleKey(Key k) {
 
 SystemStatus AppManager::status() const {
   SystemStatus st;
-  st.signal = device.signal;
+  st.signal = device.simActive() ? device.signal : 0;  // no active SIM = no signal
+  st.hotspot = device.hotspot;
   st.battery = power->batteryPercent();
   st.charging = power->charging();
   st.brightness = power->brightness();
@@ -56,6 +57,10 @@ void AppManager::loadSettings() {
   device.wifi = config->getBool("wifi", device.wifi);
   device.bluetooth = config->getBool("bluetooth", device.bluetooth);
   power->setBrightness(config->getInt("brightness", power->brightness()));
+  device.hotspot = config->getBool("hotspot", device.hotspot);
+  for (size_t i = 0; i < device.sims.size(); i++)
+    if (device.sims[i].present) device.sims[i].enabled = config->getBool("sim" + std::to_string(i) + "_enabled", device.sims[i].enabled);
+  device.dataSim = config->getInt("data_sim", device.dataSim);
 }
 
 void AppManager::saveSettings() {
@@ -63,6 +68,9 @@ void AppManager::saveSettings() {
   config->setBool("wifi", device.wifi);
   config->setBool("bluetooth", device.bluetooth);
   config->setInt("brightness", power->brightness());
+  config->setBool("hotspot", device.hotspot);
+  for (size_t i = 0; i < device.sims.size(); i++) config->setBool("sim" + std::to_string(i) + "_enabled", device.sims[i].enabled);
+  config->setInt("data_sim", device.dataSim);
   if (!config->save()) log.log(Level::Warn, "config", "save failed");
 }
 
