@@ -10,5 +10,5 @@
 |---|---|
 | Google sign-in (real) | **Not available**: no HTTP transport, no browser, no OAuth client configured. Tested only against a mock. |
 | Contacts / Calendar sync with Google | Not built. Google's device flow cannot grant these scopes; needs external-browser sign-in. |
-| Encrypted token storage | Code written; AES-GCM tests pending OpenSSL dev files. Key protection is weak without a user PIN (docs/SECURITY.md). |
+| Encrypted token storage | AES-256-GCM verified in the dev environment (OpenSSL). Key protection is weak without a user PIN (docs/SECURITY.md). |
 | Browser, YouTube, VPN | Not started. Engine choice depends on the phone's unknown RAM/CPU. |

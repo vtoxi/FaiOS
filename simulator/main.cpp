@@ -142,7 +142,11 @@ static void drawList(lv_obj_t* scr, const View& v, int top, int bottom) {
     if (!r.lead.empty()) { drawLead(scr, r.lead, 16 + 16, cy, 32, sel); tx = 16 + 42; }
     int right = W - 16;
     if (r.toggle >= 0) { drawToggle(scr, right - 34, cy, r.toggle == 1); right -= 42; }
-    else if (!r.trail.empty()) { label(scr, r.trail, F14, sel ? 0xDBEAFE : C_DIM, right - 52, cy - 8, 52, LV_TEXT_ALIGN_RIGHT); right -= 58; }
+    else if (!r.trail.empty()) {  // short trails (counts, "On") reserve less room so long titles keep more space
+      const int tww = r.trail.size() <= 4 ? 34 : 52;
+      label(scr, r.trail, F14, sel ? 0xDBEAFE : C_DIM, right - tww, cy - 8, tww, LV_TEXT_ALIGN_RIGHT);
+      right -= tww + 6;
+    }
     else if (r.unread) { rr(scr, right - 8, cy - 4, 8, 8, 4, sel ? 0xFFFFFF : C_ACC); right -= 16; }
     const int tw = right - tx;
     const uint32_t main = sel ? 0xFFFFFF : (r.tone == 1 ? C_DANGER : C_TXT);

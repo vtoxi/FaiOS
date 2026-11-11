@@ -373,7 +373,7 @@ static void test_aes_gcm_secret_box() {
 // ---- Settings -> Accounts screens (real AccountManager, MOCK transport) ----
 static void openAccounts(AppManager& m) {
   launch(m, "Settings");
-  for (int i = 0; i < 3; i++) press(m, Key::Down);  // Wi-Fi, Bluetooth, Brightness, then Accounts
+  press(m, Key::Down);  // Brightness, then Accounts
   press(m, Key::Ok);
 }
 
@@ -382,8 +382,8 @@ static void test_accounts_screens() {
   auto* m = boot();
   m->accounts = t.am.get();
   launch(*m, "Settings");
-  for (int i = 0; i < 3; i++) press(*m, Key::Down);
-  CHECK(m->top()->view().rows[3].text == "Accounts" && m->top()->view().rows[3].trail == "0");
+  press(*m, Key::Down);
+  CHECK(m->top()->view().rows[1].text == "Accounts" && m->top()->view().rows[1].trail == "0");
   press(*m, Key::Ok);
   CHECK(title(*m) == "Accounts" && m->top()->view().rows.size() == 1 && m->top()->view().rows[0].text == "Add account");
   press(*m, Key::Ok);
@@ -420,8 +420,8 @@ static void test_accounts_screens() {
 
   auto* d = boot();  // service unavailable
   launch(*d, "Settings");
-  for (int i = 0; i < 3; i++) press(*d, Key::Down);
-  CHECK(d->top()->view().rows[3].trail == "-");
+  press(*d, Key::Down);
+  CHECK(d->top()->view().rows[1].trail == "-");
   press(*d, Key::Ok);
   CHECK(d->top()->view().rows[0].sub == "Service unavailable");
   press(*d, Key::Ok);

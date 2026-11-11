@@ -652,11 +652,9 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
                                                                 {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
       tile("Tools", "calc", "Calculator & Files", group("Tools", {{fixed("Calculator", {}, "calc"), [&m] { return makeCalculator(m); }},
                                                                   {fixed("File manager", {}, "files"), [&m] { return makeFiles(m); }}})),
-      tile("System", "settings", "Settings & Network", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
-                                                                         {fixed("Connectivity", {}, "connect", "Wi-Fi, Bluetooth, data"), [&m] { return makeConnectivity(m); }},
-                                                                         {fixed("Hotspot", {}, "hotspot"), [&m] { return makeHotspot(m); }},
-                                                                         {fixed("SIM manager", {}, "sim"), [&m] { return makeSimManager(m); }},
-                                                                         {fixed("Battery", {}, "battery"), [&m] { return makeBattery(m); }}}))};
+      tile("System", "settings", "Settings & Connectivity", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
+                                                                              {fixed("Connectivity", {}, "connect", "Wi-Fi, Bluetooth, data, SIM"), [&m] { return makeConnectivity(m); }},
+                                                                              {fixed("Battery", {}, "battery"), [&m] { return makeBattery(m); }}}))};
   return std::make_unique<ListScreen>("Menu", std::move(it), "Open", true, 3);
 }
 
@@ -698,11 +696,8 @@ std::unique_ptr<Screen> makeCallHistory(AppManager&) {
   return std::make_unique<ListScreen>("Call history", std::move(it), "");
 }
 
+// Device preferences only. Radios (Wi-Fi, Bluetooth, mobile data, airplane, hotspot, SIM) live in Connectivity, one owner each.
 std::unique_ptr<Screen> makeSettings(AppManager& m) {
-  Item wifi = fixed("Wi-Fi", [&m] { setWifi(m, !m.device.wifi); }, "wifi");
-  wifi.toggle = [&m] { return m.device.wifi ? 1 : 0; };
-  Item bt = fixed("Bluetooth", [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }, "bluetooth");
-  bt.toggle = [&m] { return m.device.bluetooth ? 1 : 0; };
   Item br = fixed("Brightness", [&m] {
     int b = m.power->brightness();
     m.power->setBrightness(b >= 100 ? 20 : b + 20);
@@ -716,8 +711,6 @@ std::unique_ptr<Screen> makeSettings(AppManager& m) {
   Item acct = fixed("Accounts", [&m] { m.push(makeAccounts(m)); }, "accounts");
   acct.trail = [&m] { return m.accounts ? std::to_string(m.accounts->accounts().size()) : std::string("-"); };
   Items it;
-  it.push_back(std::move(wifi));
-  it.push_back(std::move(bt));
   it.push_back(std::move(br));
   it.push_back(std::move(acct));
   it.push_back(std::move(about));
@@ -835,7 +828,7 @@ std::unique_ptr<Screen> makeConnectivity(AppManager& m) {
   wifi.toggle = [&m] { return m.device.wifi ? 1 : 0; };
   wifi.sub = [&m] { return !m.device.wifi ? std::string("Off") : m.device.wifiSsid.empty() ? std::string("Not connected") : m.device.wifiSsid; };
   Item nets = fixed("Wi-Fi networks", [&m] { m.push(makeWifiNetworks(m)); }, "wifi", "Scan and connect");
-  Item bt = fixed("Bluetooth", [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }, "bluetooth", "Device pairing not built yet");
+  Item bt = fixed("Bluetooth", [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }, "bluetooth", "Pairing: not built yet");
   bt.toggle = [&m] { return m.device.bluetooth ? 1 : 0; };
   Item data = fixed("Mobile data", [&m] { m.device.mobileData = !m.device.mobileData; m.saveSettings(); }, "mobile");
   data.toggle = [&m] { return m.device.mobileData ? 1 : 0; };
@@ -852,7 +845,9 @@ std::unique_ptr<Screen> makeConnectivity(AppManager& m) {
   Item hs = fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot");
   hs.trail = [&m] { return std::string(m.device.hotspot ? "On" : "Off"); };
   Items it;
-  for (Item* i : {&wifi, &nets, &bt, &data, &air, &hs}) it.push_back(std::move(*i));
+  Item sim = fixed("SIM manager", [&m] { m.push(makeSimManager(m)); }, "sim");
+  sim.trail = [&m] { int n = 0; for (auto& x : m.device.sims) n += x.present && x.enabled; return std::to_string(n) + "/" + std::to_string(m.device.sims.size()); };  // active / slots
+  for (Item* i : {&wifi, &nets, &bt, &data, &air, &hs, &sim}) it.push_back(std::move(*i));
   return std::make_unique<ListScreen>("Connectivity", std::move(it), "Select");
 }
 

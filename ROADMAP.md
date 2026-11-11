@@ -68,7 +68,8 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 
 ## Accounts & Google sync
 - [x] Phase 1 core (mock-tested): JSON, PKCE/OAuth, token refresh/revoke, account manager, fail-closed secret box, Settings -> Accounts screens (+ simulator-only `[MOCK]` sign-in with `--mock-google`)
-- [ ] Phase 1 gaps: AES-GCM tests (need OpenSSL dev files), real HTTP/TLS transport, external-browser + loopback redirect, PIN-derived key, a real Google OAuth client (owner must create)
+- [x] AES-GCM secret box tests run and pass (OpenSSL installed 2026-11-11)
+- [ ] Phase 1 gaps: real HTTP/TLS transport (libcurl dev files still missing), external-browser + loopback redirect, PIN-derived key, a real Google OAuth client (owner must create)
 - [ ] Phase 2 Contacts sync, Phase 3 Calendar sync (+ native calendar app), Phase 4 offline queue/conflicts, Phase 5 Gmail/Drive. **None started.** Needs SQLite dev files.
 - Google rule found: device flow cannot request Contacts/Calendar scopes (docs/GOOGLE_AUTH.md)
 

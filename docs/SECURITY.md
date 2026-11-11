@@ -7,7 +7,7 @@ Status of each control is stated as **implemented + tested**, **implemented, not
 | Control | Status |
 |---|---|
 | Refresh/access tokens are stored only sealed (`ISecretBox`); if no secure backend exists, sign-in is **refused** (fails closed, no plaintext fallback, authorization code not even exchanged) | implemented + tested |
-| AES-256-GCM backend (OpenSSL EVP), PBKDF2-HMAC-SHA256 key derivation, fresh salt + IV per blob, header authenticated as AAD, tamper/wrong-key detection | implemented, **tests skipped until OpenSSL dev files are installed** |
+| AES-256-GCM backend (OpenSSL EVP), PBKDF2-HMAC-SHA256 key derivation, fresh salt + IV per blob, header authenticated as AAD, tamper/wrong-key detection | implemented + tested (OpenSSL 3.5.5 in the dev environment, 2026-11-11): round trip, fresh salt/IV, wrong key, ciphertext and header tamper, empty secret, no key material, and end to end through the account manager |
 | Tokens never appear in `accounts.json`, in storage in the clear, or in logs (test checks all three). Logs carry a short one-way hash of the account id, never email or tokens | implemented + tested |
 | Unreadable/tampered token blob => account marked "needs sign-in", no retry storm | implemented + tested |
 | Passwords are never requested or handled. Sign-in happens in an external browser | by design; browser not built |

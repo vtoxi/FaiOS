@@ -15,14 +15,15 @@ static void press(AppManager& m, Key k) { m.handleKey(k); }
 
 // Menu paths: {app, top-level tile (1..6), item inside the tile (0 = tile opens the app directly)}.
 // Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Clock, 5 Tools, 6 System.
-struct AppPath { const char* name; int top, sub; const char* title; };
+struct AppPath { const char* name; int top, sub; const char* title; int downs; };  // downs >= 0: Down x N then OK inside the item
 static const AppPath kApps[] = {
-    {"Dialer", 1, 1, "Phone"},   {"Contacts", 1, 2, "Contacts"},    {"Call history", 1, 3, "Call history"},
-    {"Messages", 2, 0, "Messages"}, {"Camera", 3, 0, "Camera"},
-    {"Clock", 4, 1, "Clock"},    {"Alarms", 4, 2, "Alarms"},
-    {"Calculator", 5, 1, "Calculator"}, {"Files", 5, 2, "Files"},
-    {"Settings", 6, 1, "Settings"}, {"Connectivity", 6, 2, "Connectivity"}, {"Hotspot", 6, 3, "Hotspot"},
-    {"SIM manager", 6, 4, "SIM manager"}, {"Battery", 6, 5, "Battery"}};
+    {"Dialer", 1, 1, "Phone", -1},   {"Contacts", 1, 2, "Contacts", -1},    {"Call history", 1, 3, "Call history", -1},
+    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1},
+    {"Clock", 4, 1, "Clock", -1},    {"Alarms", 4, 2, "Alarms", -1},
+    {"Calculator", 5, 1, "Calculator", -1}, {"Files", 5, 2, "Files", -1},
+    {"Settings", 6, 1, "Settings", -1}, {"Connectivity", 6, 2, "Connectivity", -1}, {"Battery", 6, 3, "Battery", -1},
+    // reached through Connectivity (one owner each): rows are Wi-Fi, Wi-Fi networks, Bluetooth, Mobile data, Airplane, Hotspot, SIM manager
+    {"Hotspot", 6, 2, "Hotspot", 5}, {"SIM manager", 6, 2, "SIM manager", 6}};
 
 // From Home: open the menu, then the tile, then the item.
 static void launch(AppManager& m, const char* app) {
@@ -31,6 +32,10 @@ static void launch(AppManager& m, const char* app) {
       m.handleKey(Key::Ok);
       m.handleKey(Key(int(Key::Num0) + a.top));
       if (a.sub) m.handleKey(Key(int(Key::Num0) + a.sub));
+      if (a.downs >= 0) {
+        for (int i = 0; i < a.downs; i++) m.handleKey(Key::Down);
+        m.handleKey(Key::Ok);
+      }
       return;
     }
   std::printf("FAIL unknown app %s\n", app);
@@ -113,12 +118,12 @@ static void test_grid_navigation() {  // launcher: 6 tiles, 3 columns
   delete m;
 }
 
-static void test_list_navigation_wraps() {  // settings: 5-item vertical list
+static void test_list_navigation_wraps() {  // settings: 3-item vertical list
   auto* m = boot();
   launch(*m, "Settings");
   CHECK(m->top()->view().layout == Layout::List && m->top()->view().selected == 0);
   press(*m, Key::Up);
-  CHECK(m->top()->view().selected == 4);
+  CHECK(m->top()->view().selected == 2);
   press(*m, Key::Down);
   CHECK(m->top()->view().selected == 0);
   delete m;
@@ -145,7 +150,12 @@ static void test_history_and_settings_rows() {
   press(*m, Key::End);
   launch(*m, "Settings");
   v = m->top()->view();
-  CHECK(v.rows[0].toggle == 1 && v.rows[2].trail == "60%");
+  CHECK(v.rows[0].text == "Brightness" && v.rows[0].trail == "60%");
+  press(*m, Key::Ok);
+  CHECK(m->top()->view().rows[0].trail == "80%");
+  press(*m, Key::End);
+  launch(*m, "Connectivity");
+  CHECK(m->top()->view().rows[0].toggle == 1);
   press(*m, Key::Ok);
   CHECK(m->top()->view().rows[0].toggle == 0);
   delete m;
@@ -184,12 +194,32 @@ static void test_messages_mark_read() {
   delete m;
 }
 
-static void test_settings_toggle() {
+static void test_settings_toggle() {  // radios live in Connectivity only
   auto* m = boot();
-  launch(*m, "Settings");
+  launch(*m, "Connectivity");
   bool before = m->device.wifi;
   press(*m, Key::Ok);  // first item = Wi-Fi
   CHECK(m->device.wifi != before);
+  delete m;
+}
+
+static void test_one_owner_per_setting() {
+  auto* m = boot();
+  launch(*m, "Settings");
+  for (auto& r : m->top()->view().rows) {
+    CHECK(r.toggle < 0);                                                           // no switches in Settings
+    CHECK(r.text != "Wi-Fi" && r.text != "Bluetooth" && r.text != "Hotspot");      // no radio duplicates
+  }
+  press(*m, Key::End);
+  launch(*m, "Connectivity");
+  int wifi = 0, bt = 0, hs = 0, sims = 0;
+  for (auto& r : m->top()->view().rows) { wifi += r.text == "Wi-Fi"; bt += r.text == "Bluetooth"; hs += r.text == "Hotspot"; sims += r.text == "SIM manager"; }
+  CHECK(wifi == 1 && bt == 1 && hs == 1 && sims == 1);
+  press(*m, Key::End);
+  press(*m, Key::Ok);
+  press(*m, Key::Num6);  // System group: Settings, Connectivity, Battery (no separate Hotspot / SIM entries)
+  auto v = m->top()->view();
+  CHECK(v.rows.size() == 3 && v.rows[0].text == "Settings" && v.rows[1].text == "Connectivity" && v.rows[2].text == "Battery");
   delete m;
 }
 
@@ -305,11 +335,11 @@ static void test_settings_persist() {
     Config c(s);
     m.config = &c;
     m.push(makeHome(m));
-    launch(m, "Settings");
+    launch(m, "Connectivity");
     press(m, Key::Ok);    // toggle Wi-Fi (default on -> off)
-    press(m, Key::Down);
-    press(m, Key::Down);
-    press(m, Key::Ok);    // brightness 60 -> 80
+    press(m, Key::End);
+    launch(m, "Settings");
+    press(m, Key::Ok);    // Brightness 60 -> 80
   }
   AppManager m2;
   Config c2(s);
@@ -336,6 +366,7 @@ int main() {
   test_dialer_does_not_fake_calls();
   test_messages_mark_read();
   test_settings_toggle();
+  test_one_owner_per_setting();
   test_keymap_names();
   test_logger();
   test_storage_and_safety();
