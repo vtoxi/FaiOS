@@ -62,7 +62,7 @@ static void test_file_manager() {
 static void test_connectivity() {
   auto* m = boot();
   launch(*m, "Connectivity");
-  CHECK(title(*m) == "Connectivity" && m->top()->view().rows.size() == 7);
+  CHECK(title(*m) == "Connectivity" && m->top()->view().rows.size() == 8);
   press(*m, Key::Ok);  // Wi-Fi off
   CHECK(!m->device.wifi && m->top()->view().rows[0].sub == "Off");
   press(*m, Key::Down);

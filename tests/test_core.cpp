@@ -7,8 +7,8 @@
 
 using namespace fai;
 
-static int failures = 0;
-#define CHECK(c) do { if (!(c)) { std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while (0)
+static int failures = 0, checks = 0;
+#define CHECK(c) do { checks++; if (!(c)) { std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #c); failures++; } } while (0)
 
 static std::string title(AppManager& m) { return m.top()->view().title; }
 static void press(AppManager& m, Key k) { m.handleKey(k); }
@@ -22,8 +22,8 @@ static const AppPath kApps[] = {
     {"Clock", 4, 1, "Clock", -1},    {"Alarms", 4, 2, "Alarms", -1},
     {"Calculator", 5, 1, "Calculator", -1}, {"Files", 5, 2, "Files", -1},
     {"Settings", 6, 1, "Settings", -1}, {"Connectivity", 6, 2, "Connectivity", -1}, {"Battery", 6, 3, "Battery", -1},
-    // reached through Connectivity (one owner each): rows are Wi-Fi, Wi-Fi networks, Bluetooth, Mobile data, Airplane, Hotspot, SIM manager
-    {"Hotspot", 6, 2, "Hotspot", 5}, {"SIM manager", 6, 2, "SIM manager", 6}};
+    // reached through Connectivity (one owner each): rows are Wi-Fi, Wi-Fi networks, Bluetooth, Mobile data, Airplane, VPN, Hotspot, SIM manager
+    {"VPN", 6, 2, "VPN", 5}, {"Hotspot", 6, 2, "Hotspot", 6}, {"SIM manager", 6, 2, "SIM manager", 7}};
 
 // From Home: open the menu, then the tile, then the item.
 static void launch(AppManager& m, const char* app) {
@@ -353,6 +353,7 @@ static void test_settings_persist() {
 #include "test_apps.inc"
 #include "test_more_apps.inc"
 #include "test_accounts.inc"
+#include "test_vpn.inc"
 
 int main() {
   test_launcher_and_back();
@@ -399,6 +400,28 @@ int main() {
   test_tampered_tokens_need_reauth();
   test_scope_changes_and_sync_flags();
   test_remove_account();
+  test_ip_parsing();
+  test_wireguard_parse();
+  test_tunnel_commands();
+  test_kill_switch_ruleset();
+  test_dns_text();
+  test_network_manager();
+  test_connectivity_monitor();
+  test_vpn_store();
+  test_vpn_connect_verifies_before_claiming_protection();
+  test_vpn_simulated_backend_is_flagged();
+  test_vpn_connect_failures();
+  test_vpn_handshake_timeout_and_backoff();
+  test_vpn_without_auto_reconnect_stops_in_error();
+  test_vpn_kill_switch_behaviour();
+  test_vpn_network_loss_and_return();
+  test_vpn_route_and_handshake_health();
+  test_vpn_endpoint_resolution_cache();
+  test_vpn_logs_never_contain_secrets();
+  test_command_backend();
+  test_vpn_screens();
+  test_vpn_import_screen();
+  test_vpn_tick_runs_through_app_manager();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();
@@ -407,6 +430,7 @@ int main() {
 #else
   std::printf("SKIPPED: AES-GCM secret box tests (OpenSSL development files not installed)\n");
 #endif
-  std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
+  if (failures) std::printf("%d FAILED of %d checks\n", failures, checks);
+  else std::printf("all passed (%d checks)\n", checks);
   return failures ? 1 : 0;
 }

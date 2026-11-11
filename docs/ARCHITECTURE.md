@@ -22,4 +22,14 @@ AppManager --> AccountManager --> OAuth (PKCE, token calls) --> IHttp  (MOCK tod
 ```
 Files in `core/`: `json`, `crypto` (SHA-256/base64/percent/random, non-secret helpers), `http` (interface), `oauth`, `secret_box`, `accounts`. The UI (`Settings -> Accounts`) only reads `AccountManager`; it never sees tokens. Planned and **not built**: `SyncManager` with per-service adapters (Contacts, Calendar), SQLite local repository, offline queue/backoff, conflict handling. The spec's separate `services/accounts`, `services/google-*` folders are not created yet: modules stay flat in `core/` until there is enough code to split.
 
-Network, VPN, browser engine abstraction, YouTube: **designed in the request, not started.**
+## Network and VPN
+```
+Settings -> Connectivity -> VPN
+AppManager --> VpnManager (state machine) --> IVpnBackend --+--> CommandVpnBackend --> ICommandRunner (ip / wg / nft, no shell)
+                  |  |                                       '--> SimVpnBackend (simulator only)
+                  |  '--> VpnStore (profiles; keys sealed via ISecretBox)
+                  '-----> NetworkManager --> ILinkProvider (SimLinkProvider today) ; DNS policy ; ConnectivityMonitor
+```
+Files in `core/`: `ip`, `wireguard` (parser), `wg_commands` (pure generators for commands / nft ruleset / resolv.conf), `command` (runner), `network`, `vpn`, `sim_links`. Details and honest status: [NETWORK_VPN.md](NETWORK_VPN.md).
+
+Browser engine abstraction, YouTube: **not started.**

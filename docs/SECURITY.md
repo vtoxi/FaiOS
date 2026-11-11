@@ -33,3 +33,15 @@ The phone has no known hardware keystore (hardware unidentified). The AES key is
 
 ## Reporting
 Not a public project yet; no disclosure process defined.
+
+## VPN
+| Control | Status |
+|---|---|
+| VPN private/preshared keys only sealed at rest; import refused without secure storage; profile file holds public data only | implemented + tested |
+| Imported `.conf` is deleted after a successful import (key not left unencrypted on flash); if deletion fails the user is told | implemented + tested |
+| Keys never in argv, logs, error text; `wg setconf` receives them on stdin and its output is not reported | implemented + tested |
+| Script hooks in profiles are rejected, never executed | implemented + tested |
+| Interface names / ruleset inputs validated (no injection into commands or nft text); DNS entries validated (no newline injection into resolv.conf) | implemented + tested |
+| "Protected" claimed only after verified tunnel + handshake + routing; simulated backend can never show it | implemented + tested |
+| Kill switch fails closed (tunnel not started if the block cannot be installed) and persists across reconnects | state machine tested with fakes; **real firewall behaviour unverified** |
+| Commands need root; the process model for dropping privileges is **not designed yet** | not built |

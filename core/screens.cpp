@@ -606,6 +606,206 @@ class AccountsScreen : public Screen {
   int sel_ = 0;
 };
 
+// ---- VPN screens (real VpnManager; the backend may be simulated, and then the UI says so) ----
+std::string bytesText(unsigned long long b) {
+  char s[24];
+  if (b < 1024) std::snprintf(s, sizeof s, "%llu B", b);
+  else if (b < 1024ULL * 1024) std::snprintf(s, sizeof s, "%.1f KB", b / 1024.0);
+  else std::snprintf(s, sizeof s, "%.1f MB", b / 1048576.0);
+  return s;
+}
+
+// "Protected" is shown ONLY for a verified, non-simulated tunnel.
+std::string vpnHeadline(const VpnStatus& s) {
+  switch (s.state) {
+    case VpnState::Disconnected: return "Not connected";
+    case VpnState::Connecting: return "Connecting...";
+    case VpnState::Reconnecting: return "Reconnecting...";
+    case VpnState::Error: return "Not protected";
+    case VpnState::Connected:
+      if (s.simulated) return "Simulated tunnel";
+      return s.protectionVerified ? "Protected" : "Connected, not verified";
+  }
+  return "";
+}
+
+std::string vpnDetail(const VpnStatus& s) {
+  if (s.state == VpnState::Disconnected) return "Choose a profile";
+  if (s.simulated) return "SIMULATED (not real)";
+  if (s.state == VpnState::Connected && s.error.empty()) return "rx " + bytesText(s.rxBytes) + "  tx " + bytesText(s.txBytes);
+  return s.error.empty() ? "" : s.error;
+}
+
+std::string profileFlags(const VpnProfile& p) {
+  if (!p.secretsOk) return "Key unavailable: import again";
+  std::string f = isFullTunnel(p.cfg) ? "Full tunnel" : "Split tunnel";
+  if (p.killSwitch) f += ", kill switch";
+  return f;
+}
+
+std::unique_ptr<Screen> makeVpnImport(AppManager& m);
+std::unique_ptr<Screen> makeVpnProfile(AppManager& m, const std::string& id);
+
+class VpnScreen : public Screen {
+ public:
+  explicit VpnScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    if (!m_.vpn || !m_.vpnStore) return false;
+    int n = 2 + int(m_.vpnStore->profiles().size());  // status row, profiles..., import row
+    sel_ = std::min(sel_, n - 1);
+    const auto& profs = m_.vpnStore->profiles();
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok) {
+      if (sel_ == 0) { if (m_.vpn->status().state != VpnState::Disconnected) m_.vpn->disconnect(); }
+      else if (sel_ == n - 1) m_.push(makeVpnImport(m_));
+      else {
+        const std::string id = profs[sel_ - 1].id;
+        const VpnStatus& st = m_.vpn->status();
+        if (st.profileId == id && st.state != VpnState::Disconnected) m_.vpn->disconnect();
+        else m_.vpn->connect(id);
+      }
+    } else if (k == Key::Soft1 && sel_ >= 1 && sel_ < n - 1) m_.push(makeVpnProfile(m_, profs[sel_ - 1].id));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "VPN";
+    if (!m_.vpn || !m_.vpnStore) {
+      Row r;
+      r.text = "VPN service unavailable";
+      v.rows.push_back(r);
+      v.keys = {"", "", "Back"};
+      return v;
+    }
+    const VpnStatus& st = m_.vpn->status();
+    Row head;
+    head.text = vpnHeadline(st);
+    head.sub = vpnDetail(st);
+    head.lead = "vpn";
+    head.trail = st.trafficBlocked ? "Blocked" : "";
+    head.tone = (st.state == VpnState::Error || st.state == VpnState::Reconnecting) ? 1 : 0;
+    v.rows.push_back(head);
+    for (auto& p : m_.vpnStore->profiles()) {
+      Row r;
+      r.text = p.name;
+      r.sub = profileFlags(p);
+      r.lead = "vpn";
+      r.tone = p.secretsOk ? 0 : 1;
+      r.trail = st.profileId == p.id && st.state != VpnState::Disconnected ? "On" : "";
+      v.rows.push_back(std::move(r));
+    }
+    Row imp;
+    imp.text = "Import profile";
+    imp.sub = "WireGuard .conf file";
+    imp.lead = "files";
+    v.rows.push_back(imp);
+    int n = int(v.rows.size());
+    v.selected = std::min(sel_, n - 1);
+    std::string center = "Open";
+    if (v.selected == 0) center = st.state == VpnState::Disconnected ? "" : "Disconnect";
+    else if (v.selected < n - 1) center = st.profileId == m_.vpnStore->profiles()[v.selected - 1].id && st.state != VpnState::Disconnected ? "Disconnect" : "Connect";
+    v.keys = {v.selected >= 1 && v.selected < n - 1 ? "Options" : "", center, "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  int sel_ = 0;
+};
+
+std::unique_ptr<Screen> makeVpnProfile(AppManager& m, const std::string& id) {
+  auto prof = [&m, id]() -> const VpnProfile* { return m.vpnStore ? m.vpnStore->find(id) : nullptr; };
+  auto flag = [&m, id, prof](const char* label, const char* sub, bool VpnProfile::*field) {
+    Item i = fixed(label, [&m, id, prof, field] {
+      if (const VpnProfile* p = prof()) {
+        VpnProfile c = *p;
+        c.*field = !(c.*field);
+        m.vpnStore->update(c);
+        if (m.vpn && m.vpn->status().profileId == id && m.vpn->status().state != VpnState::Disconnected)
+          m.notifications.add("VPN", "Applies the next time you connect");
+      }
+    }, "vpn", sub);
+    i.toggle = [prof, field] { const VpnProfile* p = prof(); return p && (*p).*field ? 1 : 0; };
+    return i;
+  };
+  Item server = fixed("Server", {}, "info");
+  server.sub = [prof] {
+    const VpnProfile* p = prof();
+    if (!p || p->cfg.peers.empty() || p->cfg.peers[0].endpointHost.empty()) return std::string("(none)");
+    return p->cfg.peers[0].endpointHost + ":" + std::to_string(p->cfg.peers[0].endpointPort);
+  };
+  Item del = fixed("Delete profile", [&m, id] {
+    Item yes = fixed("Delete profile and key", [&m, id] {
+      if (m.vpn && m.vpn->status().profileId == id) m.vpn->disconnect();
+      if (m.vpnStore) m.vpnStore->remove(id);
+      m.requestPop(2);
+    }, "alert");
+    yes.tone = 1;
+    Items it;
+    it.push_back(std::move(yes));
+    it.push_back(fixed("Cancel", [&m] { m.requestPop(1); }));
+    m.push(std::make_unique<ListScreen>("Delete profile?", std::move(it), "Select"));
+  }, "alert");
+  del.tone = 1;
+  Items it;
+  it.push_back(std::move(server));
+  it.push_back(flag("Kill switch", "Block if VPN drops", &VpnProfile::killSwitch));
+  it.push_back(flag("Reconnect", "Retry automatically", &VpnProfile::autoReconnect));
+  it.push_back(flag("LAN access", "Printers, router", &VpnProfile::allowLanWhenBlocked));
+  it.push_back(std::move(del));
+  const VpnProfile* p0 = prof();
+  return std::make_unique<ListScreen>(p0 ? p0->name : std::string("Profile"), std::move(it), "Change");
+}
+
+// Lists import/*.conf. A successful import deletes the source file so the key is not left unencrypted on flash.
+class VpnImportScreen : public Screen {
+ public:
+  explicit VpnImportScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    auto f = files();
+    int n = int(f.size());
+    if (!n) return false;
+    sel_ = std::min(sel_, n - 1);
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok) doImport(f[sel_]);
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Import VPN";
+    auto f = files();
+    for (auto& name : f) { Row r; r.text = name; r.lead = "file"; r.sub = "WireGuard config"; v.rows.push_back(r); }
+    if (f.empty()) { Row r; r.text = "No .conf files"; r.sub = m_.files ? "Put them in the import folder" : "Storage unavailable"; v.rows.push_back(r); }
+    else v.selected = std::min(sel_, int(f.size()) - 1);
+    v.keys = {"", f.empty() ? "" : "Import", "Back"};
+    return v;
+  }
+ private:
+  std::vector<std::string> files() const {
+    std::vector<std::string> out;
+    if (!m_.files) return out;
+    for (auto& n : m_.files->list("import/"))
+      if (n.size() > 5 && n.compare(n.size() - 5, 5, ".conf") == 0) out.push_back(n);
+    return out;
+  }
+  void doImport(const std::string& file) {
+    std::string text;
+    if (!m_.vpnStore || !m_.files->read("import/" + file, text)) { m_.notifications.add("VPN", "Could not read " + file); return; }
+    VpnImportResult r = m_.vpnStore->import(file.substr(0, file.size() - 5), text);
+    if (!r.ok) { m_.notifications.add("VPN import failed", r.error); return; }
+    bool wiped = m_.files->remove("import/" + file);
+    m_.notifications.add("VPN imported", wiped ? "Source file deleted so the key is not left unencrypted" : "Delete the source file yourself: it still holds the key");
+    m_.requestPop();
+  }
+  AppManager& m_;
+  int sel_ = 0;
+};
+
+std::unique_ptr<Screen> makeVpnImport(AppManager& m) { return std::make_unique<VpnImportScreen>(m); }
+
 struct Net { const char* ssid; bool secured, saved; };
 const Net kNets[] = {{"Home-5G", true, true}, {"Office", true, true}, {"CafeFree", false, false}, {"Neighbor", true, false}};
 
@@ -798,6 +998,7 @@ std::unique_ptr<Screen> makeSimManager(AppManager& m) {
 }
 
 std::unique_ptr<Screen> makeAccounts(AppManager& m) { return std::make_unique<AccountsScreen>(m); }
+std::unique_ptr<Screen> makeVpn(AppManager& m) { return std::make_unique<VpnScreen>(m); }
 std::unique_ptr<Screen> makeNotifications(AppManager& m) { return std::make_unique<NotificationsScreen>(m); }
 std::unique_ptr<Screen> makeBattery(AppManager& m) { return std::make_unique<BatteryScreen>(m); }
 std::unique_ptr<Screen> makeFiles(AppManager& m) { return std::make_unique<FilesScreen>(m, ""); }
@@ -842,12 +1043,18 @@ std::unique_ptr<Screen> makeConnectivity(AppManager& m) {
     m.saveSettings();
   }, "airplane");
   air.toggle = [&m] { return m.device.airplane ? 1 : 0; };
+  Item vpn = fixed("VPN", [&m] { m.push(makeVpn(m)); }, "vpn");
+  vpn.trail = [&m] {
+    if (!m.vpn) return std::string("-");
+    if (m.vpn->status().state == VpnState::Disconnected) return std::string("Off");
+    return std::string(m.vpn->status().protectionVerified ? "On" : "...");
+  };
   Item hs = fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot");
   hs.trail = [&m] { return std::string(m.device.hotspot ? "On" : "Off"); };
   Items it;
   Item sim = fixed("SIM manager", [&m] { m.push(makeSimManager(m)); }, "sim");
   sim.trail = [&m] { int n = 0; for (auto& x : m.device.sims) n += x.present && x.enabled; return std::to_string(n) + "/" + std::to_string(m.device.sims.size()); };  // active / slots
-  for (Item* i : {&wifi, &nets, &bt, &data, &air, &hs, &sim}) it.push_back(std::move(*i));
+  for (Item* i : {&wifi, &nets, &bt, &data, &air, &vpn, &hs, &sim}) it.push_back(std::move(*i));
   return std::make_unique<ListScreen>("Connectivity", std::move(it), "Select");
 }
 

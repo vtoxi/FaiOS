@@ -44,6 +44,8 @@ void AppManager::handleKey(Key k) {
 }
 
 void AppManager::tick(std::time_t now) {
+  if (net) net->poll();   // link changes reach the VPN manager through its listener
+  if (vpn) vpn->tick();
   long minute = long(now / 60);
   if (minute == lastMinute_) return;  // at most once per minute
   lastMinute_ = minute;
@@ -67,6 +69,12 @@ SystemStatus AppManager::status() const {
   st.signal = (device.simActive() && !device.airplane) ? device.signal : 0;  // no SIM / airplane = no signal
   st.airplane = device.airplane;
   st.hotspot = device.hotspot;
+  if (vpn) {
+    const VpnStatus& v = vpn->status();
+    st.vpnProtected = v.protectionVerified;
+    st.vpnSimulated = v.simulated;
+    st.vpnBlocked = v.trafficBlocked;
+  }
   st.battery = power->batteryPercent();
   st.charging = power->charging();
   st.brightness = power->brightness();

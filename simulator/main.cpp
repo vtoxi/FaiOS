@@ -13,6 +13,8 @@
 
 #include "mock_google.h"
 #include "screens.h"
+#include "sim_links.h"
+#include "sim_vpn.h"
 
 using namespace fai;
 
@@ -68,7 +70,7 @@ static const Ic kIcons[] = {
     {"bluetooth", LV_SYMBOL_BLUETOOTH, 0x60A5FA}, {"brightness", LV_SYMBOL_EYE_OPEN, 0xF59E0B},
     {"info", LV_SYMBOL_FILE, 0x94A3B8},          {"call_in", LV_SYMBOL_CALL, 0x22C55E},
     {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444},
-    {"accounts", LV_SYMBOL_HOME, 0xA78BFA},      {"calendar", LV_SYMBOL_DIRECTORY, 0x34D399},
+    {"vpn", LV_SYMBOL_EYE_CLOSE, 0x38BDF8},      {"accounts", LV_SYMBOL_HOME, 0xA78BFA},      {"calendar", LV_SYMBOL_DIRECTORY, 0x34D399},
     {"clock", LV_SYMBOL_LOOP, 0xF472B6},         {"alarm", LV_SYMBOL_BELL, 0xFB923C},
     {"files", LV_SYMBOL_DIRECTORY, 0xFBBF24},    {"folder", LV_SYMBOL_DIRECTORY, 0xFBBF24},
     {"file", LV_SYMBOL_FILE, 0x94A3B8},          {"connect", LV_SYMBOL_GPS, 0x22D3EE},
@@ -107,6 +109,8 @@ static void drawStatusBar(lv_obj_t* scr, const SystemStatus& st) {
   std::string g;
   if (st.badge) g += std::string(LV_SYMBOL_ENVELOPE) + " ";
   if (st.airplane) g += "AIR  ";
+  if (st.vpnBlocked && !st.vpnProtected) g += "BLK ";                    // kill switch is blocking and no verified tunnel
+  else if (st.vpnProtected) g += st.vpnSimulated ? "sVPN " : "VPN ";      // "sVPN" = simulated, never shown as protection
   if (st.hotspot) g += std::string(LV_SYMBOL_UPLOAD) + " ";
   if (st.bluetooth) g += std::string(LV_SYMBOL_BLUETOOTH) + " ";
   if (st.wifi) g += std::string(LV_SYMBOL_WIFI) + " ";
@@ -119,7 +123,7 @@ static void drawSoftkeys(lv_obj_t* scr, const Softkeys& k) {
   rr(scr, 0, H - SOFT, W, 1, 0, C_LINE);
   int y = H - SOFT + 7;
   label(scr, k.left, F14, C_TXT, 10, y, 80);
-  label(scr, k.center, F14, C_ACC, 80, y, 80, LV_TEXT_ALIGN_CENTER);
+  label(scr, k.center, F14, C_ACC, 66, y, 108, LV_TEXT_ALIGN_CENTER);  // wide enough for "Disconnect"
   label(scr, k.right, F14, C_TXT, W - 90, y, 80, LV_TEXT_ALIGN_RIGHT);
 }
 
@@ -329,6 +333,7 @@ static void runScript(const std::string& script, const std::string& dir) {
   for (std::string tok; std::getline(ss, tok, ',');) {
     Key k;
     if (tok.rfind("shot:", 0) == 0) shot(dir + "/" + tok.substr(5) + ".ppm");
+    else if (tok.rfind("wait:", 0) == 0) { SDL_Delay(Uint32(std::atoi(tok.c_str() + 5))); g_mgr.tick(std::time(nullptr)); }  // let simulated time pass, then tick services
     else if (keyFromName(tok, k)) g_mgr.handleKey(k);
     else std::fprintf(stderr, "script: unknown key '%s'\n", tok.c_str());
   }
@@ -368,8 +373,11 @@ static int onSdlEvent(void*, SDL_Event* e) {
 
 int main(int argc, char** argv) {
   defaultKeys();
-  bool mockGoogle = false;
-  for (int i = 1; i < argc; i++) if (std::string(argv[i]) == "--mock-google") mockGoogle = true;
+  bool mockGoogle = false, vpnDemo = false;
+  for (int i = 1; i < argc; i++) {
+    if (std::string(argv[i]) == "--mock-google") mockGoogle = true;
+    if (std::string(argv[i]) == "--vpn-demo") vpnDemo = true;
+  }
   std::string script, shotsDir = ".";
   for (int i = 1; i + 1 < argc; i++) {
     std::string a = argv[i];
@@ -417,6 +425,21 @@ int main(int argc, char** argv) {
   accounts.configure(oc);
   accounts.load();
   g_mgr.accounts = &accounts;
+
+  // Network + VPN: link state is SIMULATED from the Device; the VPN backend is SIMULATED (no tunnel, no protection).
+  SimLinkProvider links(g_mgr.device);
+  NetworkManager network(links, g_mgr.log);
+  SimResolver simResolver;
+  SimVpnBackend simBackend;
+  VpnStore vpnStore(storage, box, rng, g_mgr.log);
+  vpnStore.load();
+  VpnManager vpn(vpnStore, simBackend, simResolver, network, g_mgr.log, [] { return SimVpnBackend::nowMs(); });
+  network.addListener([&](LinkKind, LinkKind) { vpn.onNetworkChange(); });
+  network.poll();
+  g_mgr.net = &network;
+  g_mgr.vpnStore = &vpnStore;
+  g_mgr.vpn = &vpn;
+  if (vpnDemo && !storage.exists("import/demo.conf") && vpnStore.profiles().empty()) storage.write("import/demo.conf", demoWgConfig());
   if (mockGoogle)
     g_mgr.mockSignIn = [&] {
       AuthRequest r = accounts.beginSignIn({scope::kOpenId, scope::kEmail, scope::kProfile});
@@ -430,7 +453,15 @@ int main(int argc, char** argv) {
     static int n = 0;
     Layout l = g_mgr.top()->view().layout;
     bool second = ++n % 10 == 0;
-    if (second) g_mgr.tick(std::time(nullptr));  // fires due alarms
+    if (second) {
+      g_mgr.tick(std::time(nullptr));  // fires due alarms, polls links, drives the VPN
+      if (g_mgr.vpn) {                 // redraw when the tunnel state changes
+        static std::string lastVpn;
+        const VpnStatus& vs = g_mgr.vpn->status();
+        std::string cur = std::string(vpnStateName(vs.state)) + (vs.protectionVerified ? "+" : "-") + vs.error + std::to_string(vs.rxBytes / 4096);
+        if (cur != lastVpn) { lastVpn = cur; g_dirty = true; }
+      }
+    }
     if (l == Layout::Clock || (l == Layout::Home && second)) g_dirty = true;
   }, 100, nullptr);
 

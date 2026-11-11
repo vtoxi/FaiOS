@@ -11,3 +11,9 @@
 
 ## Accounts in the simulator
 `faios_sim --mock-google` enables a `[MOCK] Test account` row under Settings -> Accounts -> Add account. It signs in against `simulator/mock_google.h` (fake Google). Needs the secret box (OpenSSL) or it will report "no secure storage". Never use it as evidence that Google sign-in works.
+
+## Checking that the tests actually bite
+`python3 build/scripts/mutation-check.py` (inside Ubuntu, after a normal build) breaks production code in 13 deliberate ways (routing check, kill switch, hooks, key echo, DNS policy, ...), rebuilds, runs the tests and restores the files. Every mutation must report "caught". Add a mutation whenever you add a security-relevant rule.
+
+## VPN in the simulator
+`faios_sim --vpn-demo` places a fake demo profile in `~/.faios/import/`. Settings -> System -> Connectivity -> VPN -> Import profile. The backend is simulated.

@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 #include "accounts.h"
+#include "network.h"
+#include "vpn.h"
 #include "screen.h"
 #include "services.h"
 
@@ -46,6 +48,9 @@ class AppManager {
   std::function<long long()> nowMs = [] {  // monotonic ms; tests inject a fake
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   };
+  NetworkManager* net = nullptr;          // null = network service unavailable
+  VpnStore* vpnStore = nullptr;
+  VpnManager* vpn = nullptr;
   AccountManager* accounts = nullptr;     // null = accounts service unavailable
   std::function<void()> mockSignIn;       // set ONLY by the simulator's --mock-google flag
   IStorage* files = nullptr;  // browsed by the File manager; null = unavailable

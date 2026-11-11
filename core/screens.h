@@ -25,5 +25,6 @@ std::unique_ptr<Screen> makeAlarms(AppManager& m);
 std::unique_ptr<Screen> makeWifiNetworks(AppManager& m);
 std::unique_ptr<Screen> makeConnectivity(AppManager& m);
 std::unique_ptr<Screen> makeAccounts(AppManager& m);
+std::unique_ptr<Screen> makeVpn(AppManager& m);
 
 }  // namespace fai

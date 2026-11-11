@@ -76,3 +76,8 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 ## Queued, not started
 - Network manager + WireGuard VPN core; browser engine abstraction + tab memory manager; YouTube evaluation; Media apps (simulated); Games + Calendar app wiring (logic written, untested); multi-tap text entry
 - Buildroot QEMU image: build in progress (toolchain compile), not yet booted
+
+## Network + VPN core (2026-11-11)
+- [x] IP/endpoint parsing, WireGuard config parser (script hooks refused), command + kill-switch + DNS generators, NetworkManager, VPN store (sealed keys), VPN state machine, command backend, Connectivity -> VPN screens. **738 checks pass; a mutation check (build/scripts/mutation-check.py) confirmed the tests catch 13 deliberate breakages in the secret, kill-switch, routing and DNS logic.**
+- [ ] **Not verified against a real tunnel.** Next: Buildroot QEMU image with WireGuard + nftables + netns pair (see docs/NETWORK_VPN.md)
+- [ ] Real link provider, real DNS writer, userspace WireGuard decision (needs phone kernel/RAM), OpenVPN, browser abstraction

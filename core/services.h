@@ -159,6 +159,7 @@ class ServiceManager {
 struct SystemStatus {
   int signal = 0, battery = 0, brightness = 0, badge = 0;  // badge = unread messages + notifications
   bool charging = false, wifi = false, bluetooth = false, hotspot = false, airplane = false;
+  bool vpnProtected = false, vpnSimulated = false, vpnBlocked = false;  // protected = tunnel + handshake + routing all verified
 };
 
 }  // namespace fai
