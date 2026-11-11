@@ -8,3 +8,4 @@
 6. **Whole-UI rebuild per change** in the renderer — simple; optimise only if measured slow.
 7. **Services in one header** (`services.h`) — each is tiny; split per file when one grows. Storage keys are relative names only (no `..`, no absolute) so a bad caller can't escape the data dir.
 8. **Battery/brightness moved from `Device` to `IPower`** so real hardware can replace the simulated source behind one interface.
+9. **Richer View model** (`Layout` + `Row`: lead icon/avatar, sub-text, trailing text, toggle, unread, tone) so the renderer stays dumb while screens look professional. Icons are LVGL built-in symbols, avatars are coloured letter circles: no image assets to ship. Theme colours are constants at the top of `simulator/main.cpp`.

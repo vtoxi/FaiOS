@@ -17,12 +17,26 @@ bool keyFromName(const std::string& name, Key& out);  // used for the configurab
 
 struct Softkeys { std::string left, center, right; };
 
+enum class Layout { List, Grid, Home, Text, Dial };
+
+// One list/grid entry. lead: icon name ("call", "wifi", ...) or "@A" for a letter avatar.
+struct Row {
+  std::string text, sub, lead, trail;
+  int toggle = -1;      // -1 none, 0 off, 1 on (drawn as a switch)
+  bool unread = false;  // accent dot
+  int tone = 0;         // 0 normal, 1 danger
+};
+
 // What a screen wants drawn. The renderer (LVGL today) is dumb and just draws this.
+//   List/Grid: rows + selected.  Home: lines = {time, date[, badge text]}.
+//   Text: lines (wrapped body) + optional lead avatar.  Dial: lines = {number, note}.
 struct View {
   std::string title;
+  Layout layout = Layout::List;
+  std::vector<Row> rows;
   std::vector<std::string> lines;
-  int selected = -1;  // highlighted line, -1 = none
-  bool home = false;  // home screen uses the big-clock layout
+  std::string lead;
+  int selected = -1;
   Softkeys keys;
 };
 

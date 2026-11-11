@@ -44,17 +44,67 @@ static void test_five_apps_via_digit_shortcuts() {
   }
 }
 
-static void test_list_navigation_wraps() {
+static void test_grid_navigation() {  // launcher: 5 items, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().selected == 0);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 5);
+  auto sel = [&] { return m->top()->view().selected; };
+  CHECK(sel() == 0);
+  press(*m, Key::Right);
+  CHECK(sel() == 1);
+  press(*m, Key::Down);  // 1 + 3 = 4
+  CHECK(sel() == 4);
+  press(*m, Key::Down);  // no row below: wraps to top of the column
+  CHECK(sel() == 1);
+  press(*m, Key::Up);    // wraps to bottom of the column
+  CHECK(sel() == 4);
+  press(*m, Key::Left);
+  CHECK(sel() == 3);
   press(*m, Key::Up);
-  CHECK(m->top()->view().selected == 4);
+  CHECK(sel() == 0);
+  press(*m, Key::Right);
+  press(*m, Key::Ok);    // index 1 = Contacts
+  CHECK(title(*m) == "Contacts");
+  delete m;
+}
+
+static void test_list_navigation_wraps() {  // settings: 4-item vertical list
+  auto* m = boot();
+  press(*m, Key::Ok);
+  press(*m, Key::Num5);
+  CHECK(m->top()->view().layout == Layout::List && m->top()->view().selected == 0);
+  press(*m, Key::Up);
+  CHECK(m->top()->view().selected == 3);
   press(*m, Key::Down);
   CHECK(m->top()->view().selected == 0);
-  press(*m, Key::Down);
-  press(*m, Key::Ok);  // selected index 1 = Contacts
-  CHECK(title(*m) == "Contacts");
+  delete m;
+}
+
+static void test_rows_and_contact_call() {
+  auto* m = boot();
+  press(*m, Key::Soft2);  // Home right softkey = Contacts
+  auto v = m->top()->view();
+  CHECK(title(*m) == "Contacts" && v.rows[0].text == "Ali" && v.rows[0].lead == "@A" && !v.rows[0].sub.empty());
+  press(*m, Key::Ok);     // contact card
+  CHECK(m->top()->view().layout == Layout::Text && m->top()->view().keys.left == "Call");
+  press(*m, Key::Soft1);  // Call -> dialer prefilled with the digits
+  CHECK(title(*m) == "Phone" && m->top()->view().lines[0] == "03001112233");
+  delete m;
+}
+
+static void test_history_and_settings_rows() {
+  auto* m = boot();
+  press(*m, Key::Ok);
+  press(*m, Key::Num4);
+  auto v = m->top()->view();
+  CHECK(v.rows[0].tone == 1 && v.rows[0].lead == "call_miss");   // missed call = danger
+  CHECK(v.rows[1].tone == 0 && v.rows[1].trail == "2:14");
+  press(*m, Key::Back);
+  press(*m, Key::Num5);
+  v = m->top()->view();
+  CHECK(v.rows[0].toggle == 1 && v.rows[2].trail == "60%");
+  press(*m, Key::Ok);
+  CHECK(m->top()->view().rows[0].toggle == 0);
   delete m;
 }
 
@@ -233,7 +283,10 @@ static void test_settings_persist() {
 int main() {
   test_launcher_and_back();
   test_five_apps_via_digit_shortcuts();
+  test_grid_navigation();
   test_list_navigation_wraps();
+  test_rows_and_contact_call();
+  test_history_and_settings_rows();
   test_dialer();
   test_dialer_does_not_fake_calls();
   test_messages_mark_read();
