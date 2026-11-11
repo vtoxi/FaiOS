@@ -13,6 +13,30 @@ static int failures = 0;
 static std::string title(AppManager& m) { return m.top()->view().title; }
 static void press(AppManager& m, Key k) { m.handleKey(k); }
 
+// Menu paths: {app, top-level tile (1..7), item inside the tile (0 = tile opens the app directly)}.
+// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Clock, 5 Network, 6 Tools, 7 System.
+struct AppPath { const char* name; int top, sub; const char* title; };
+static const AppPath kApps[] = {
+    {"Dialer", 1, 1, "Phone"},   {"Contacts", 1, 2, "Contacts"},    {"Call history", 1, 3, "Call history"},
+    {"Messages", 2, 0, "Messages"}, {"Camera", 3, 0, "Camera"},
+    {"Clock", 4, 1, "Clock"},    {"Alarms", 4, 2, "Alarms"},
+    {"Connectivity", 5, 1, "Connectivity"}, {"Hotspot", 5, 2, "Hotspot"}, {"SIM manager", 5, 3, "SIM manager"},
+    {"Calculator", 6, 1, "Calculator"}, {"Files", 6, 2, "Files"},
+    {"Settings", 7, 1, "Settings"}, {"Battery", 7, 2, "Battery"}};
+
+// From Home: open the menu, then the tile, then the item.
+static void launch(AppManager& m, const char* app) {
+  for (auto& a : kApps)
+    if (std::string(a.name) == app) {
+      m.handleKey(Key::Ok);
+      m.handleKey(Key(int(Key::Num0) + a.top));
+      if (a.sub) m.handleKey(Key(int(Key::Num0) + a.sub));
+      return;
+    }
+  std::printf("FAIL unknown app %s\n", app);
+  failures++;
+}
+
 static AppManager* boot() {
   auto* m = new AppManager;
   m->push(makeHome(*m));
@@ -32,49 +56,66 @@ static void test_launcher_and_back() {
   delete m;
 }
 
-static void test_five_apps_via_digit_shortcuts() {
-  const char* names[] = {"Phone", "Contacts", "Messages", "Call history", "Settings"};
-  for (int i = 0; i < 5; i++) {
+static void test_all_apps_reachable_by_name() {
+  for (auto& a : kApps) {
     auto* m = boot();
-    press(*m, Key::Ok);
-    press(*m, Key(int(Key::Num1) + i));
-    CHECK(title(*m) == names[i]);
+    launch(*m, a.name);
+    CHECK(title(*m) == a.title);
     press(*m, Key::End);  // End returns home from anywhere
     CHECK(m->depth() == 1);
     delete m;
   }
 }
 
-static void test_grid_navigation() {  // launcher: 14 items, 3 columns
+static void test_grouped_menu() {
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 14);
+  auto v = m->top()->view();
+  CHECK(v.layout == Layout::Grid && v.rows.size() == 7);
+  CHECK(v.rows[0].text == "Phone" && v.rows[0].sub == "Phone & Contacts");
+  press(*m, Key::Num1);  // Phone tile opens a short list, not the dialer
+  v = m->top()->view();
+  CHECK(title(*m) == "Phone" && v.layout == Layout::List && v.rows.size() == 3);
+  CHECK(v.rows[0].text == "Dialer" && v.rows[1].text == "Contacts" && v.rows[2].text == "Call history");
+  press(*m, Key::Down);  // arrows + OK work as well as digits
+  press(*m, Key::Ok);
+  CHECK(title(*m) == "Contacts");
+  press(*m, Key::Back);  // back to the group, then the menu
+  CHECK(title(*m) == "Phone");
+  press(*m, Key::Back);
+  CHECK(title(*m) == "Menu");
+  press(*m, Key::Num2);  // Messages opens directly (no group)
+  CHECK(title(*m) == "Messages");
+  delete m;
+}
+
+static void test_grid_navigation() {  // launcher: 7 tiles, 3 columns
+  auto* m = boot();
+  press(*m, Key::Ok);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 7);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
   CHECK(sel() == 1);
-  for (int expect : {4, 7, 10, 13, 1}) {  // down the column, then wrap to the top
-    press(*m, Key::Down);
-    CHECK(sel() == expect);
-  }
+  press(*m, Key::Down);  // 1 + 3 = 4
+  CHECK(sel() == 4);
+  press(*m, Key::Down);  // no row below: wraps to top of the column
+  CHECK(sel() == 1);
   press(*m, Key::Up);    // wraps to bottom of the column
-  CHECK(sel() == 13);
+  CHECK(sel() == 4);
   press(*m, Key::Left);
-  CHECK(sel() == 12);
-  for (int expect : {9, 6, 3, 0}) {
-    press(*m, Key::Up);
-    CHECK(sel() == expect);
-  }
+  CHECK(sel() == 3);
+  press(*m, Key::Up);
+  CHECK(sel() == 0);
   press(*m, Key::Right);
-  press(*m, Key::Ok);    // index 1 = Contacts
-  CHECK(title(*m) == "Contacts");
+  press(*m, Key::Ok);    // index 1 = Messages
+  CHECK(title(*m) == "Messages");
   delete m;
 }
 
 static void test_list_navigation_wraps() {  // settings: 4-item vertical list
   auto* m = boot();
-  press(*m, Key::Ok);
-  press(*m, Key::Num5);
+  launch(*m, "Settings");
   CHECK(m->top()->view().layout == Layout::List && m->top()->view().selected == 0);
   press(*m, Key::Up);
   CHECK(m->top()->view().selected == 3);
@@ -97,13 +138,12 @@ static void test_rows_and_contact_call() {
 
 static void test_history_and_settings_rows() {
   auto* m = boot();
-  press(*m, Key::Ok);
-  press(*m, Key::Num4);
+  launch(*m, "Call history");
   auto v = m->top()->view();
   CHECK(v.rows[0].tone == 1 && v.rows[0].lead == "call_miss");   // missed call = danger
   CHECK(v.rows[1].tone == 0 && v.rows[1].trail == "2:14");
-  press(*m, Key::Back);
-  press(*m, Key::Num5);
+  press(*m, Key::End);
+  launch(*m, "Settings");
   v = m->top()->view();
   CHECK(v.rows[0].toggle == 1 && v.rows[2].trail == "60%");
   press(*m, Key::Ok);
@@ -137,8 +177,7 @@ static void test_dialer_does_not_fake_calls() {
 static void test_messages_mark_read() {
   auto* m = boot();
   CHECK(m->device.unread() == 2);
-  press(*m, Key::Ok);
-  press(*m, Key::Num3);  // Messages
+  launch(*m, "Messages");
   press(*m, Key::Ok);    // open first (unread)
   CHECK(m->device.unread() == 1);
   CHECK(title(*m) == "Ali");
@@ -147,8 +186,7 @@ static void test_messages_mark_read() {
 
 static void test_settings_toggle() {
   auto* m = boot();
-  press(*m, Key::Ok);
-  press(*m, Key::Num5);
+  launch(*m, "Settings");
   bool before = m->device.wifi;
   press(*m, Key::Ok);  // first item = Wi-Fi
   CHECK(m->device.wifi != before);
@@ -267,8 +305,7 @@ static void test_settings_persist() {
     Config c(s);
     m.config = &c;
     m.push(makeHome(m));
-    press(m, Key::Ok);
-    press(m, Key::Num5);  // Settings
+    launch(m, "Settings");
     press(m, Key::Ok);    // toggle Wi-Fi (default on -> off)
     press(m, Key::Down);
     press(m, Key::Down);
@@ -288,7 +325,8 @@ static void test_settings_persist() {
 
 int main() {
   test_launcher_and_back();
-  test_five_apps_via_digit_shortcuts();
+  test_all_apps_reachable_by_name();
+  test_grouped_menu();
   test_grid_navigation();
   test_list_navigation_wraps();
   test_rows_and_contact_call();
@@ -310,7 +348,6 @@ int main() {
   test_clock_stopwatch();
   test_camera();
   test_sim_manager_and_hotspot();
-  test_launcher_has_all_apps();
   test_storage_list_remove();
   test_file_manager();
   test_connectivity();

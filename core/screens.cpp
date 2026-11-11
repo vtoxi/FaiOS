@@ -508,21 +508,38 @@ std::unique_ptr<Screen> makeHome(AppManager& m) { return std::make_unique<HomeSc
 
 std::unique_ptr<Screen> makePhone(AppManager&, const std::string& initial) { return std::make_unique<DialScreen>(initial); }
 
+// Related apps share one launcher tile that opens a short list (keys 1..n jump straight in).
+static std::unique_ptr<Screen> makeGroup(AppManager& m, const std::string& title, std::vector<std::pair<Item, std::function<std::unique_ptr<Screen>()>>> apps) {
+  Items it;
+  for (auto& [item, make] : apps) {
+    Item i = std::move(item);
+    i.action = [&m, make] { m.push(make()); };
+    it.push_back(std::move(i));
+  }
+  return std::make_unique<ListScreen>(title, std::move(it), "Open", true);
+}
+
 std::unique_ptr<Screen> makeLauncher(AppManager& m) {
-  Items it{fixed("Phone", [&m] { m.push(makePhone(m)); }, "call", "Phone"),
-           fixed("Contacts", [&m] { m.push(makeContacts(m)); }, "contacts", "Contacts"),
-           fixed("Messages", [&m] { m.push(makeMessages(m)); }, "mail", "Messages"),
-           fixed("History", [&m] { m.push(makeCallHistory(m)); }, "history", "Call history"),
-           fixed("Settings", [&m] { m.push(makeSettings(m)); }, "settings", "Settings"),
-           fixed("Clock", [&m] { m.push(makeClock(m)); }, "clock", "Clock"),
-           fixed("Calc", [&m] { m.push(makeCalculator(m)); }, "calc", "Calculator"),
-           fixed("Camera", [&m] { m.push(makeCamera(m)); }, "camera", "Camera"),
-           fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot", "Hotspot"),
-           fixed("SIM", [&m] { m.push(makeSimManager(m)); }, "sim", "SIM manager"),
-           fixed("Alarms", [&m] { m.push(makeAlarms(m)); }, "alarm", "Alarms"),
-           fixed("Files", [&m] { m.push(makeFiles(m)); }, "files", "File manager"),
-           fixed("Connect", [&m] { m.push(makeConnectivity(m)); }, "connect", "Connectivity"),
-           fixed("Battery", [&m] { m.push(makeBattery(m)); }, "battery", "Battery")};
+  using Make = std::function<std::unique_ptr<Screen>()>;
+  auto tile = [&m](const char* label, const char* lead, const char* caption, Make make) {
+    return fixed(label, [&m, make] { m.push(make()); }, lead, caption);
+  };
+  auto group = [&m](const char* title, std::vector<std::pair<Item, Make>> apps) { return [&m, title, apps] { return makeGroup(m, title, apps); }; };
+  Items it{
+      tile("Phone", "call", "Phone & Contacts", group("Phone", {{fixed("Dialer", {}, "call"), [&m] { return makePhone(m); }},
+                                                                {fixed("Contacts", {}, "contacts"), [&m] { return makeContacts(m); }},
+                                                                {fixed("Call history", {}, "history"), [&m] { return makeCallHistory(m); }}})),
+      tile("Messages", "mail", "Messages", [&m] { return makeMessages(m); }),
+      tile("Camera", "camera", "Camera", [&m] { return makeCamera(m); }),
+      tile("Clock", "clock", "Clock & Alarms", group("Clock", {{fixed("Clock", {}, "clock", "Time and stopwatch"), [&m] { return makeClock(m); }},
+                                                                {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
+      tile("Network", "connect", "Network & SIM", group("Network", {{fixed("Connectivity", {}, "connect", "Wi-Fi, Bluetooth, data"), [&m] { return makeConnectivity(m); }},
+                                                                    {fixed("Hotspot", {}, "hotspot"), [&m] { return makeHotspot(m); }},
+                                                                    {fixed("SIM manager", {}, "sim"), [&m] { return makeSimManager(m); }}})),
+      tile("Tools", "calc", "Calculator & Files", group("Tools", {{fixed("Calculator", {}, "calc"), [&m] { return makeCalculator(m); }},
+                                                                  {fixed("File manager", {}, "files"), [&m] { return makeFiles(m); }}})),
+      tile("System", "settings", "Settings & Battery", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
+                                                                        {fixed("Battery", {}, "battery"), [&m] { return makeBattery(m); }}}))};
   return std::make_unique<ListScreen>("Menu", std::move(it), "Open", true, 3);
 }
 

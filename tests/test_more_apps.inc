@@ -1,12 +1,6 @@
 // Included by test_core.cpp: File manager, Connectivity, Battery, Alarms, Notifications, storage listing.
 #include <ctime>
 
-static void openApp(AppManager& m, int index) {  // from Home: menu, move to grid index, open
-  press(m, Key::Ok);
-  for (int i = 0; i < index; i++) press(m, Key::Right);
-  press(m, Key::Ok);
-}
-
 static void test_storage_list_remove() {
   MemStorage s;
   s.write("config.ini", "a");
@@ -39,7 +33,7 @@ static void test_file_manager() {
   fs.write("config.ini", "wifi=true\nbrightness=60\n");
   fs.write("notes/todo.txt", "buy milk\n");
   m->files = &fs;
-  openApp(*m, 11);  // Files
+  launch(*m, "Files");
   CHECK(title(*m) == "Files");
   auto v = m->top()->view();
   CHECK(v.rows.size() == 2 && v.rows[0].text == "config.ini" && v.rows[1].lead == "folder");
@@ -60,14 +54,14 @@ static void test_file_manager() {
   delete m;
 
   auto* n = boot();  // no storage attached
-  openApp(*n, 11);
+  launch(*n, "Files");
   CHECK(n->top()->view().rows[0].text == "Storage unavailable");
   delete n;
 }
 
 static void test_connectivity() {
   auto* m = boot();
-  openApp(*m, 12);  // Connectivity
+  launch(*m, "Connectivity");
   CHECK(title(*m) == "Connectivity" && m->top()->view().rows.size() == 6);
   press(*m, Key::Ok);  // Wi-Fi off
   CHECK(!m->device.wifi && m->top()->view().rows[0].sub == "Off");
@@ -99,7 +93,7 @@ static void test_connectivity() {
 
 static void test_battery_screen() {
   auto* m = boot();
-  openApp(*m, 13);
+  launch(*m, "Battery");
   CHECK(title(*m) == "Battery" && m->top()->view().layout == Layout::Battery);
   auto v = m->top()->view();
   CHECK(v.lines[0] == "78" && v.lines[1] == "Not charging" && v.lines[2] == "3.95 V" && v.lines[3] == "31.0 C");
@@ -112,7 +106,7 @@ static void test_alarms() {
   MemStorage store;
   Config cfg(store);
   m->config = &cfg;
-  openApp(*m, 10);  // Alarms
+  launch(*m, "Alarms");
   CHECK(title(*m) == "Alarms" && m->top()->view().rows.size() == 1 && m->top()->view().rows[0].text == "07:00");
   press(*m, Key::Soft1);  // add
   press(*m, Key::Num0); press(*m, Key::Num6); press(*m, Key::Num3);

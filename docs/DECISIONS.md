@@ -15,3 +15,4 @@
 13. **`AppManager::requestPop()`** defers pops until the current key handler returns, so an action can close its own screen safely (delete confirm, alarm editor). Live-data screens (Files, Alarms, Notifications) recompute rows each draw instead of caching them.
 14. **IStorage gained `list`/`remove`** (children listing, files-only delete) to back the File manager. Keys stay relative-only.
 15. **Alarms fire through `AppManager::tick`** at most once per minute as notifications; no audio or full-screen ring until audio HAL exists.
+16. **Grouped launcher** (7 tiles instead of 14): related apps share a tile that opens a short list. Fits one screen without scrolling, keeps digit shortcuts meaningful (1-7, then 1-3 inside a group), and mirrors how feature-phone menus are usually organised. Groups are defined in `makeLauncher`; moving an app is a one-line change.

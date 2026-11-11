@@ -51,16 +51,15 @@ static void test_calc_logic() {
 
 static void test_calc_screen_keys() {
   auto* m = boot();
-  press(*m, Key::Ok);
-  press(*m, Key::Num7);  // Calculator
+  launch(*m, "Calculator");
   CHECK(title(*m) == "Calculator" && m->top()->view().layout == Layout::Calc);
   press(*m, Key::Num4); press(*m, Key::Num2);
   press(*m, Key::Up);    // +
   press(*m, Key::Num8);
   press(*m, Key::Ok);    // =
   CHECK(m->top()->view().lines[1] == "50");
-  press(*m, Key::Back);  // nothing to delete after '=' -> leaves the app
-  CHECK(title(*m) == "Menu");
+  press(*m, Key::Back);  // nothing to delete after '=' -> leaves the app (back to the Tools group)
+  CHECK(title(*m) == "Tools");
   delete m;
 }
 
@@ -68,8 +67,7 @@ static void test_clock_stopwatch() {
   auto* m = boot();
   long long now = 1000;
   m->nowMs = [&] { return now; };
-  press(*m, Key::Ok);
-  press(*m, Key::Num6);  // Clock
+  launch(*m, "Clock");
   CHECK(title(*m) == "Clock" && m->top()->view().lines[2] == "00:00.0");
   press(*m, Key::Ok);    // start
   now += 65300;
@@ -90,8 +88,7 @@ static void test_clock_stopwatch() {
 
 static void test_camera() {
   auto* m = boot();
-  press(*m, Key::Ok);
-  press(*m, Key::Num8);  // Camera
+  launch(*m, "Camera");
   CHECK(title(*m) == "Camera" && m->top()->view().layout == Layout::Camera);
   CHECK(m->top()->view().keys.left.empty());   // no gallery
   press(*m, Key::Soft1);                       // nothing happens
@@ -106,8 +103,7 @@ static void test_camera() {
 static void test_sim_manager_and_hotspot() {
   auto* m = boot();
   CHECK(m->status().signal == 4);
-  press(*m, Key::Ok);
-  press(*m, Key::Num0);  // SIM manager is the 10th item (key 0)
+  launch(*m, "SIM manager");
   CHECK(title(*m) == "SIM manager" && m->top()->view().rows.size() == 2);
   CHECK(m->top()->view().rows[0].trail == "Data" && m->top()->view().rows[1].sub == "Empty");
   press(*m, Key::Down);
@@ -120,35 +116,24 @@ static void test_sim_manager_and_hotspot() {
   press(*m, Key::Ok);    // disable SIM 1
   CHECK(!m->device.sims[0].enabled && m->device.dataSim == -1);
   CHECK(m->status().signal == 0);  // no active SIM = no signal bars
-  press(*m, Key::Back); press(*m, Key::Back);
 
   // hotspot is refused without an active data SIM, and says why
-  press(*m, Key::Num9);
+  press(*m, Key::End);
+  launch(*m, "Hotspot");
   CHECK(title(*m) == "Hotspot");
   press(*m, Key::Ok);
   CHECK(!m->device.hotspot && m->notifications.count() == 1);
-  press(*m, Key::Back);
-  press(*m, Key::Num0); press(*m, Key::Ok);
+  press(*m, Key::End);
+  launch(*m, "SIM manager");
+  press(*m, Key::Ok);    // SIM 1 detail
   press(*m, Key::Ok);    // re-enable SIM 1
   press(*m, Key::Down);
   press(*m, Key::Ok);    // use for data
   CHECK(m->device.sims[0].enabled && m->device.dataSim == 0);
-  press(*m, Key::Back); press(*m, Key::Back);
-  press(*m, Key::Num9);
+  press(*m, Key::End);
+  launch(*m, "Hotspot");
   press(*m, Key::Ok);
   CHECK(m->device.hotspot && !m->device.wifi && m->status().hotspot);
   CHECK(m->top()->view().rows[3].trail == "2");
-  delete m;
-}
-
-static void test_launcher_has_all_apps() {
-  auto* m = boot();
-  press(*m, Key::Ok);
-  const char* names[] = {"Phone", "Contacts", "Messages", "Call history", "Settings", "Clock", "Calculator", "Camera", "Hotspot", "SIM manager"};
-  for (int i = 0; i < 10; i++) {
-    press(*m, i < 9 ? Key(int(Key::Num1) + i) : Key::Num0);  // keys 1..9 then 0
-    CHECK(title(*m) == names[i]);
-    press(*m, Key::Back);
-  }
   delete m;
 }

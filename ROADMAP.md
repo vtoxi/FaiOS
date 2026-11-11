@@ -55,3 +55,7 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] Replug test with `usb-watch.ps1`: no enumeration seen (E-4), so E-2/E-3 remain unconfirmed
 - [ ] Try: data-capable cable, battery removed vs old battery inserted; then photograph the label under the battery; FCC ID lookup
 - [ ] Nothing flashed, read back or modified. No compatibility claim.
+
+## Grouped menu
+- [x] Launcher is 7 tiles: Phone (Dialer, Contacts, Call history), Messages, Camera, Clock (Clock, Alarms), Network (Connectivity, Hotspot, SIM manager), Tools (Calculator, File manager), System (Settings, Battery). Tiles with several apps open a short icon list; keys 1..n jump in. Tests open apps by name through these paths.
+- [ ] Visual check in the live window — pending
