@@ -17,6 +17,7 @@ bool EventStore::save() {
     o.set("id", Json::makeNumber(e.id)).set("y", Json::makeNumber(e.date.y)).set("m", Json::makeNumber(e.date.m)).set("d", Json::makeNumber(e.date.d));
     o.set("start", Json::makeNumber(e.startMin)).set("dur", Json::makeNumber(e.durationMin));
     o.set("title", Json::makeString(e.title)).set("source", Json::makeString(e.source));
+    o.set("rid", Json::makeString(e.remoteId)).set("etag", Json::makeString(e.etag)).set("dirty", Json::makeBool(e.dirty)).set("deleted", Json::makeBool(e.deleted));
     arr.push(o);
   }
   Json root = Json::makeObject();
@@ -39,6 +40,10 @@ bool EventStore::load() {
     e.durationMin = int(o["dur"].asNumber(60));
     e.title = o["title"].asString();
     e.source = o["source"].asString("local");
+    e.remoteId = o["rid"].asString();
+    e.etag = o["etag"].asString();
+    e.dirty = o["dirty"].asBool();
+    e.deleted = o["deleted"].asBool();
     if (e.id <= 0 || !validDate(e.date) || e.startMin < -1 || e.startMin >= 1440 || events_.size() >= kMax) continue;  // drop bad rows, keep the rest
     events_.push_back(std::move(e));
   }
@@ -69,20 +74,42 @@ bool EventStore::remove(int id) {
   auto it = std::find_if(events_.begin(), events_.end(), [id](const Event& e) { return e.id == id; });
   if (it == events_.end()) return false;
   Event gone = *it;
-  events_.erase(it);
-  if (!save()) { events_.push_back(gone); return false; }
+  if (it->deleted) return false;  // already a tombstone
+  const bool tomb = !it->remoteId.empty();
+  if (tomb) { it->deleted = true; it->dirty = true; }  // keep a tombstone so the deletion can be synced
+  else events_.erase(it);
+  if (!save()) {
+    if (tomb) { for (auto& e : events_) if (e.id == gone.id) e = gone; }
+    else events_.push_back(gone);
+    return false;
+  }
   return true;
 }
 
 std::vector<Event> EventStore::forDay(const Date& d) const {
   std::vector<Event> v;
-  for (auto& e : events_) if (sameDay(e.date, d)) v.push_back(e);
+  for (auto& e : events_) if (sameDay(e.date, d) && !e.deleted) v.push_back(e);
   std::stable_sort(v.begin(), v.end(), [](const Event& a, const Event& b) { return a.startMin != b.startMin ? a.startMin < b.startMin : a.id < b.id; });
   return v;  // startMin -1 (all day) sorts first
 }
 
+bool EventStore::setTitle(int id, const std::string& title) {
+  for (auto& e : events_)
+    if (e.id == id && !e.deleted) {
+      std::string old = e.title;
+      e.title.clear();
+      for (unsigned char c : title) if (c >= 0x20 && c != 0x7f) e.title += char(c);
+      if (e.title.size() > 60) e.title.resize(60);
+      if (e.title.find_first_not_of(' ') == std::string::npos) e.title = "Event";
+      if (!e.remoteId.empty()) e.dirty = true;
+      if (!save()) { e.title = old; return false; }
+      return true;
+    }
+  return false;
+}
+
 bool EventStore::hasEvents(const Date& d) const {
-  for (auto& e : events_) if (sameDay(e.date, d)) return true;
+  for (auto& e : events_) if (sameDay(e.date, d) && !e.deleted) return true;
   return false;
 }
 
