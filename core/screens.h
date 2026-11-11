@@ -16,8 +16,13 @@ std::unique_ptr<Screen> makeSettings(AppManager& m);
 std::unique_ptr<Screen> makeClock(AppManager& m);
 std::unique_ptr<Screen> makeCalculator(AppManager& m);
 std::unique_ptr<Screen> makeCamera(AppManager& m);
-std::unique_ptr<Screen> makeGallery(AppManager& m);
 std::unique_ptr<Screen> makeHotspot(AppManager& m);
 std::unique_ptr<Screen> makeSimManager(AppManager& m);
+std::unique_ptr<Screen> makeNotifications(AppManager& m);
+std::unique_ptr<Screen> makeBattery(AppManager& m);
+std::unique_ptr<Screen> makeFiles(AppManager& m);
+std::unique_ptr<Screen> makeAlarms(AppManager& m);
+std::unique_ptr<Screen> makeWifiNetworks(AppManager& m);
+std::unique_ptr<Screen> makeConnectivity(AppManager& m);
 
 }  // namespace fai

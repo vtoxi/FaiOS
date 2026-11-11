@@ -35,6 +35,9 @@ class IStorage {
   virtual bool read(const std::string& key, std::string& out) = 0;
   virtual bool write(const std::string& key, const std::string& data) = 0;
   virtual bool exists(const std::string& key) = 0;
+  // Immediate children of dir ("" = root, else "photos/"), sorted; sub-directories end with '/'.
+  virtual std::vector<std::string> list(const std::string& dir) = 0;
+  virtual bool remove(const std::string& key) = 0;  // files only
 };
 
 class MemStorage : public IStorage {
@@ -42,6 +45,8 @@ class MemStorage : public IStorage {
   bool read(const std::string& key, std::string& out) override;
   bool write(const std::string& key, const std::string& data) override;
   bool exists(const std::string& key) override { return m_.count(key) > 0; }
+  std::vector<std::string> list(const std::string& dir) override;
+  bool remove(const std::string& key) override { return m_.erase(key) > 0; }
  private:
   std::map<std::string, std::string> m_;
 };
@@ -52,6 +57,8 @@ class FileStorage : public IStorage {  // writes are atomic (temp file + rename)
   bool read(const std::string& key, std::string& out) override;
   bool write(const std::string& key, const std::string& data) override;
   bool exists(const std::string& key) override;
+  std::vector<std::string> list(const std::string& dir) override;
+  bool remove(const std::string& key) override;
  private:
   std::string root_;
 };
@@ -97,12 +104,16 @@ class IPower {
   virtual bool charging() const = 0;
   virtual int brightness() const = 0;  // 0..100
   virtual void setBrightness(int pct) = 0;
+  virtual int voltageMv() const = 0;
+  virtual int tempDeciC() const = 0;  // tenths of a degree C
 };
 
 class SimPower : public IPower {  // SIMULATED values
  public:
   int batteryPercent() const override { return 78; }
   bool charging() const override { return false; }
+  int voltageMv() const override { return 3950; }
+  int tempDeciC() const override { return 310; }
   int brightness() const override { return b_; }
   void setBrightness(int pct) override { b_ = pct < 0 ? 0 : pct > 100 ? 100 : pct; }
  private:
@@ -147,7 +158,7 @@ class ServiceManager {
 // ---- System status snapshot (what the status bar needs) -----------------------
 struct SystemStatus {
   int signal = 0, battery = 0, brightness = 0, badge = 0;  // badge = unread messages + notifications
-  bool charging = false, wifi = false, bluetooth = false, hotspot = false;
+  bool charging = false, wifi = false, bluetooth = false, hotspot = false, airplane = false;
 };
 
 }  // namespace fai

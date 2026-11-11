@@ -45,28 +45,26 @@ static void test_five_apps_via_digit_shortcuts() {
   }
 }
 
-static void test_grid_navigation() {  // launcher: 10 items, 3 columns
+static void test_grid_navigation() {  // launcher: 14 items, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 10);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 14);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
   CHECK(sel() == 1);
-  press(*m, Key::Down);  // 1 + 3 = 4
-  CHECK(sel() == 4);
-  press(*m, Key::Down);  // 7
-  CHECK(sel() == 7);
-  press(*m, Key::Down);  // no row below: wraps to top of the column
-  CHECK(sel() == 1);
+  for (int expect : {4, 7, 10, 13, 1}) {  // down the column, then wrap to the top
+    press(*m, Key::Down);
+    CHECK(sel() == expect);
+  }
   press(*m, Key::Up);    // wraps to bottom of the column
-  CHECK(sel() == 7);
+  CHECK(sel() == 13);
   press(*m, Key::Left);
-  CHECK(sel() == 6);
-  press(*m, Key::Up);
-  CHECK(sel() == 3);
-  press(*m, Key::Up);
-  CHECK(sel() == 0);
+  CHECK(sel() == 12);
+  for (int expect : {9, 6, 3, 0}) {
+    press(*m, Key::Up);
+    CHECK(sel() == expect);
+  }
   press(*m, Key::Right);
   press(*m, Key::Ok);    // index 1 = Contacts
   CHECK(title(*m) == "Contacts");
@@ -286,6 +284,7 @@ static void test_settings_persist() {
 }
 
 #include "test_apps.inc"
+#include "test_more_apps.inc"
 
 int main() {
   test_launcher_and_back();
@@ -309,9 +308,15 @@ int main() {
   test_calc_logic();
   test_calc_screen_keys();
   test_clock_stopwatch();
-  test_camera_and_gallery();
+  test_camera();
   test_sim_manager_and_hotspot();
   test_launcher_has_all_apps();
+  test_storage_list_remove();
+  test_file_manager();
+  test_connectivity();
+  test_battery_screen();
+  test_alarms();
+  test_notifications_screen();
   std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
   return failures ? 1 : 0;
 }

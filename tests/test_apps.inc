@@ -88,20 +88,18 @@ static void test_clock_stopwatch() {
   delete m;
 }
 
-static void test_camera_and_gallery() {
+static void test_camera() {
   auto* m = boot();
   press(*m, Key::Ok);
   press(*m, Key::Num8);  // Camera
   CHECK(title(*m) == "Camera" && m->top()->view().layout == Layout::Camera);
-  press(*m, Key::Soft1); // gallery is empty
-  CHECK(title(*m) == "Gallery" && m->top()->view().rows.empty());
-  press(*m, Key::Back);
+  CHECK(m->top()->view().keys.left.empty());   // no gallery
+  press(*m, Key::Soft1);                       // nothing happens
+  CHECK(title(*m) == "Camera");
   press(*m, Key::Ok);
   press(*m, Key::Ok);
   CHECK(m->device.photos.size() == 2 && m->device.photos[1] == "IMG_0002");
   CHECK(m->top()->view().lines[0].find("simulated") != std::string::npos);  // never pretends to be real
-  press(*m, Key::Soft1);
-  CHECK(m->top()->view().rows.size() == 2);
   delete m;
 }
 

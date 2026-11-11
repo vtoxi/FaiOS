@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <ctime>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -21,6 +22,11 @@ struct Device {
   std::string hotspotName = "FaiOS-Hotspot", hotspotPass = "faios1234";
   int hotspotClients() const { return hotspot ? 2 : 0; }  // SIMULATED
   std::vector<std::string> photos;                         // SIMULATED captures (names only)
+  bool mobileData = true, airplane = false;
+  std::string wifiSsid = "Home-5G";
+  struct Alarm { int minutes; std::string label; bool enabled; };  // minutes since midnight
+  std::vector<Alarm> alarms{{420, "Wake up", false}};
+  bool dataUsable() const { return simActive() && dataSim >= 0 && mobileData && !airplane; }
   bool simActive() const { for (auto& s : sims) if (s.present && s.enabled) return true; return false; }
   std::vector<Message> messages{
       {"Ali", "Meet at 6?", true},
@@ -39,6 +45,7 @@ class AppManager {
   std::function<long long()> nowMs = [] {  // monotonic ms; tests inject a fake
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   };
+  IStorage* files = nullptr;  // browsed by the File manager; null = unavailable
   Config* config = nullptr;  // optional; when set, Settings changes persist
   std::function<void()> onChange;  // fired after any stack/key change (renderer hook)
 
@@ -46,6 +53,8 @@ class AppManager {
   bool pop();           // never pops the root (home) screen
   void goHome();
   void handleKey(Key k);
+  void requestPop(int n = 1) { pendingPops_ += n; }  // pop after the current key handler returns (safe from inside onKey)
+  void tick(std::time_t now);                         // call about once a second: fires due alarms as notifications
   SystemStatus status() const;
   void loadSettings();  // config -> device/power
   void saveSettings();  // device/power -> config, written to storage
@@ -54,6 +63,8 @@ class AppManager {
 
  private:
   std::vector<std::unique_ptr<Screen>> stack_;
+  int pendingPops_ = 0;
+  long lastMinute_ = -1;
   void changed() { if (onChange) onChange(); }
 };
 

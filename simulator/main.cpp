@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 #include <lvgl.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -65,8 +66,12 @@ static const Ic kIcons[] = {
     {"bluetooth", LV_SYMBOL_BLUETOOTH, 0x60A5FA}, {"brightness", LV_SYMBOL_EYE_OPEN, 0xF59E0B},
     {"info", LV_SYMBOL_FILE, 0x94A3B8},          {"call_in", LV_SYMBOL_CALL, 0x22C55E},
     {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444},
-    {"clock", LV_SYMBOL_BELL, 0xF472B6},         {"calc", LV_SYMBOL_KEYBOARD, 0x2DD4BF},
-    {"camera", LV_SYMBOL_IMAGE, 0xF87171},       {"image", LV_SYMBOL_IMAGE, 0xF87171},
+    {"clock", LV_SYMBOL_LOOP, 0xF472B6},         {"alarm", LV_SYMBOL_BELL, 0xFB923C},
+    {"files", LV_SYMBOL_DIRECTORY, 0xFBBF24},    {"folder", LV_SYMBOL_DIRECTORY, 0xFBBF24},
+    {"file", LV_SYMBOL_FILE, 0x94A3B8},          {"connect", LV_SYMBOL_GPS, 0x22D3EE},
+    {"battery", LV_SYMBOL_BATTERY_FULL, 0x4ADE80}, {"alert", LV_SYMBOL_WARNING, 0xF59E0B},
+    {"mobile", LV_SYMBOL_DOWNLOAD, 0x60A5FA},    {"airplane", LV_SYMBOL_SHUFFLE, 0x94A3B8},         {"calc", LV_SYMBOL_KEYBOARD, 0x2DD4BF},
+    {"camera", LV_SYMBOL_IMAGE, 0xF87171},
     {"hotspot", LV_SYMBOL_WIFI, 0x38BDF8},       {"sim", LV_SYMBOL_SD_CARD, 0xFBBF24}};
 
 static const Ic* findIcon(const std::string& n) {
@@ -98,6 +103,7 @@ static void drawStatusBar(lv_obj_t* scr, const SystemStatus& st) {
                     : st.battery > 35 ? LV_SYMBOL_BATTERY_2 : st.battery > 10 ? LV_SYMBOL_BATTERY_1 : LV_SYMBOL_BATTERY_EMPTY;
   std::string g;
   if (st.badge) g += std::string(LV_SYMBOL_ENVELOPE) + "  ";
+  if (st.airplane) g += "AIR  ";
   if (st.hotspot) g += std::string(LV_SYMBOL_UPLOAD) + "  ";
   if (st.bluetooth) g += std::string(LV_SYMBOL_BLUETOOTH) + "  ";
   if (st.wifi) g += std::string(LV_SYMBOL_WIFI) + "  ";
@@ -196,6 +202,21 @@ static void drawCalc(lv_obj_t* scr, const View& v, int top) {
   label(scr, "OK or # =    * .", F14, C_DIM, 8, top + 144, W - 16, LV_TEXT_ALIGN_CENTER);
 }
 
+static void drawBattery(lv_obj_t* scr, const View& v, int top) {
+  const int pct = std::atoi(v.lines[0].c_str());
+  label(scr, v.lines[0] + "%", F48, C_TXT, 0, top + 4, W, LV_TEXT_ALIGN_CENTER);
+  rr(scr, 20, top + 66, W - 40, 14, 7, C_SURF2);  // level bar
+  rr(scr, 20, top + 66, std::max(8, (W - 40) * pct / 100), 14, 7, pct > 20 ? C_OK : C_DANGER);
+  static const char* const names[] = {"Status", "Voltage", "Temperature"};
+  for (int i = 0; i < 3; i++) {
+    const int y = top + 94 + i * 36;
+    rr(scr, 8, y, W - 16, 32, 10, C_SURF);
+    label(scr, names[i], F14, C_DIM, 18, y + 8, 100);
+    label(scr, v.lines[1 + i], F14, C_TXT, 110, y + 8, W - 128, LV_TEXT_ALIGN_RIGHT);
+  }
+  label(scr, v.lines[4], F12, C_OFF, 8, top + 206, W - 16, LV_TEXT_ALIGN_CENTER);
+}
+
 static void drawCamera(lv_obj_t* scr, const View& v, int top) {
   const int x = 10, y = top + 4, w = W - 20, h = 168;
   rr(scr, x, y, w, h, 10, 0x05080F);
@@ -271,6 +292,7 @@ static void render() {
       case Layout::Clock: drawClock(scr, v, top); break;
       case Layout::Calc: drawCalc(scr, v, top); break;
       case Layout::Camera: drawCamera(scr, v, top); break;
+      case Layout::Battery: drawBattery(scr, v, top); break;
       default: drawList(scr, v, top, H - SOFT); break;
     }
   }
@@ -321,6 +343,7 @@ int main(int argc, char** argv) {
   g_mgr.log.sink = [](const LogEntry& e) { std::fprintf(stderr, "[%s] %s: %s\n", levelName(e.level), e.tag.c_str(), e.msg.c_str()); };
   const char* home = std::getenv("HOME");
   FileStorage storage(std::string(home ? home : ".") + "/.faios");
+  g_mgr.files = &storage;  // File manager browses ~/.faios
   Config config(storage);
   ServiceManager services(g_mgr.log);
   services.add(std::make_unique<FnService>("config", [&] { config.load(); g_mgr.config = &config; g_mgr.loadSettings(); return true; },
@@ -332,7 +355,9 @@ int main(int argc, char** argv) {
   lv_timer_create([](lv_timer_t*) {  // clock tick: 10 Hz on Clock (stopwatch), 1 Hz on Home
     static int n = 0;
     Layout l = g_mgr.top()->view().layout;
-    if (l == Layout::Clock || (l == Layout::Home && ++n % 10 == 0)) g_dirty = true;
+    bool second = ++n % 10 == 0;
+    if (second) g_mgr.tick(std::time(nullptr));  // fires due alarms
+    if (l == Layout::Clock || (l == Layout::Home && second)) g_dirty = true;
   }, 100, nullptr);
 
   while (g_running) {

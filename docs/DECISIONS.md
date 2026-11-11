@@ -12,3 +12,6 @@
 10. **Calculator is a separate `Calc` class** (core/calc.cpp) with left-to-right chaining, so the maths is unit-tested without any UI. Operators sit on the arrow keys because feature phones have no operator keys.
 11. **Hotspot refuses without an active data SIM** and raises a notification; enabling it turns the simulated Wi-Fi client off. Rules are simulated stand-ins for the real network stack.
 12. **No signal when no SIM is enabled** (`AppManager::status()`), so the SIM manager visibly affects the status bar.
+13. **`AppManager::requestPop()`** defers pops until the current key handler returns, so an action can close its own screen safely (delete confirm, alarm editor). Live-data screens (Files, Alarms, Notifications) recompute rows each draw instead of caching them.
+14. **IStorage gained `list`/`remove`** (children listing, files-only delete) to back the File manager. Keys stay relative-only.
+15. **Alarms fire through `AppManager::tick`** at most once per minute as notifications; no audio or full-screen ring until audio HAL exists.

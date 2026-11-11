@@ -1,6 +1,8 @@
 #include "screens.h"
 #include "calc.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <functional>
 
@@ -90,10 +92,11 @@ class ListScreen : public Screen {
 // Read-only detail card. Optional Call softkey (e.g. contact details).
 class TextScreen : public Screen {
  public:
-  TextScreen(std::string title, std::vector<std::string> lines, std::string lead = "", std::function<void()> call = {})
-      : title_(std::move(title)), lines_(std::move(lines)), lead_(std::move(lead)), call_(std::move(call)) {}
+  TextScreen(std::string title, std::vector<std::string> lines, std::string lead = "", std::string softLabel = "",
+             std::function<void()> soft = {})
+      : title_(std::move(title)), lines_(std::move(lines)), lead_(std::move(lead)), softLabel_(std::move(softLabel)), soft_(std::move(soft)) {}
   bool onKey(Key k) override {
-    if (call_ && (k == Key::Soft1 || k == Key::Call || k == Key::Ok)) { call_(); return true; }
+    if (soft_ && (k == Key::Soft1 || k == Key::Ok || (k == Key::Call && softLabel_ == "Call"))) { soft_(); return true; }
     return false;
   }
   View view() const override {
@@ -102,14 +105,15 @@ class TextScreen : public Screen {
     v.layout = Layout::Text;
     v.lines = lines_;
     v.lead = lead_;
-    v.keys = {call_ ? "Call" : "", "", "Back"};
+    v.keys = {soft_ ? softLabel_ : "", "", "Back"};
     return v;
   }
  private:
   std::string title_;
   std::vector<std::string> lines_;
   std::string lead_;
-  std::function<void()> call_;
+  std::string softLabel_;
+  std::function<void()> soft_;
 };
 
 class DialScreen : public Screen {
@@ -146,6 +150,7 @@ class HomeScreen : public Screen {
     int d = digitOf(k);
     if (k == Key::Ok || k == Key::Soft1) m_.push(makeLauncher(m_));
     else if (k == Key::Soft2) m_.push(makeContacts(m_));
+    else if (k == Key::Up) m_.push(makeNotifications(m_));
     else if (k == Key::Call) m_.push(makePhone(m_));
     else if (d >= 0) m_.push(makePhone(m_, std::string(1, char('0' + d))));
     else if (k == Key::Star) m_.push(makePhone(m_, "*"));
@@ -162,7 +167,10 @@ class HomeScreen : public Screen {
     std::strftime(hm, sizeof hm, "%H:%M", std::localtime(&t));
     std::strftime(date, sizeof date, "%A, %d %B", std::localtime(&t));
     v.lines = {hm, date};
-    if (int n = m_.status().badge) v.lines.push_back(std::to_string(n) + " unread");
+    std::string badge;
+    if (int n = m_.device.unread()) badge = std::to_string(n) + " unread";
+    if (size_t n = m_.notifications.count()) badge += std::string(badge.empty() ? "" : "  |  ") + std::to_string(n) + (n > 1 ? " alerts" : " alert");
+    if (!badge.empty()) v.lines.push_back(badge);
     v.keys = {"Menu", "", "Contacts"};
     return v;
   }
@@ -239,8 +247,7 @@ class CameraScreen : public Screen {  // SIMULATED: no camera hardware; "capture
       std::snprintf(name, sizeof name, "IMG_%04d", int(m_.device.photos.size()) + 1);
       m_.device.photos.push_back(name);
       note_ = std::string("Saved ") + name + " (simulated)";
-    } else if (k == Key::Soft1) m_.push(makeGallery(m_));
-    else return false;
+    } else return false;
     return true;
   }
   View view() const override {
@@ -248,13 +255,242 @@ class CameraScreen : public Screen {  // SIMULATED: no camera hardware; "capture
     v.title = "Camera";
     v.layout = Layout::Camera;
     v.lines = {note_, std::to_string(m_.device.photos.size())};
-    v.keys = {"Gallery", "Capture", "Back"};
+    v.keys = {"", "Capture", "Back"};
     return v;
   }
  private:
   AppManager& m_;
   std::string note_;
 };
+
+// Shared rule: the Wi-Fi radio can't be a client and a hotspot at once (simulated).
+void setWifi(AppManager& m, bool on) {
+  m.device.wifi = on;
+  if (on) m.device.hotspot = false;
+  m.saveSettings();
+}
+
+std::string hhmm(int mins) {
+  char b[8];
+  std::snprintf(b, sizeof b, "%02d:%02d", mins / 60, mins % 60);
+  return b;
+}
+
+class NotificationsScreen : public Screen {
+ public:
+  explicit NotificationsScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    int n = int(m_.notifications.count());
+    if (!n) return false;
+    sel_ = std::min(sel_, n - 1);
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok) m_.notifications.dismiss(m_.notifications.list()[sel_].id);
+    else if (k == Key::Soft1) m_.notifications.clear();
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Notifications";
+    auto& l = m_.notifications.list();
+    for (auto& x : l) { Row r; r.text = x.title; r.sub = x.body; r.lead = "alert"; v.rows.push_back(r); }
+    if (l.empty()) { Row r; r.text = "No notifications"; v.rows.push_back(r); }
+    else v.selected = std::min(sel_, int(l.size()) - 1);
+    v.keys = {l.empty() ? "" : "Clear all", l.empty() ? "" : "Dismiss", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  int sel_ = 0;
+};
+
+class BatteryScreen : public Screen {  // values come from IPower (SimPower today = SIMULATED)
+ public:
+  explicit BatteryScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key) override { return false; }
+  View view() const override {
+    View v;
+    v.title = "Battery";
+    v.layout = Layout::Battery;
+    char volt[16], temp[16];
+    int mv = m_.power->voltageMv(), dc = m_.power->tempDeciC();
+    std::snprintf(volt, sizeof volt, "%d.%02d V", mv / 1000, mv % 1000 / 10);
+    std::snprintf(temp, sizeof temp, "%d.%d C", dc / 10, dc % 10);
+    v.lines = {std::to_string(m_.power->batteryPercent()), m_.power->charging() ? "Charging" : "Not charging", volt, temp,
+               "Simulated values"};
+    v.keys = {"", "", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+};
+
+// Live directory listing of AppManager::files (re-read on every draw, so deletes show immediately).
+class FilesScreen : public Screen {
+ public:
+  FilesScreen(AppManager& m, std::string dir) : m_(m), dir_(std::move(dir)) {}
+  bool onKey(Key k) override {
+    auto e = entries();
+    int n = int(e.size());
+    if (!n) return false;
+    sel_ = std::min(sel_, n - 1);
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok || k == Key::Soft1) open(e[sel_]);
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = dir_.empty() ? "Files" : dir_;
+    auto e = entries();
+    if (!m_.files) { Row r; r.text = "Storage unavailable"; v.rows.push_back(r); }
+    else if (e.empty()) { Row r; r.text = "Empty"; v.rows.push_back(r); }
+    for (auto& name : e) {
+      Row r;
+      bool dir = name.back() == '/';
+      r.text = dir ? name.substr(0, name.size() - 1) : name;
+      r.lead = dir ? "folder" : "file";
+      if (dir) r.sub = "Folder";
+      else { std::string d; m_.files->read(dir_ + name, d); r.sub = size(d.size()); }
+      v.rows.push_back(std::move(r));
+    }
+    if (!e.empty()) v.selected = std::min(sel_, int(e.size()) - 1);
+    v.keys = {"", e.empty() ? "" : "Open", "Back"};
+    return v;
+  }
+ private:
+  std::vector<std::string> entries() const { return m_.files ? m_.files->list(dir_) : std::vector<std::string>{}; }
+  static std::string size(size_t b) {
+    char s[24];
+    if (b < 1024) std::snprintf(s, sizeof s, "%zu B", b);
+    else std::snprintf(s, sizeof s, "%.1f KB", b / 1024.0);
+    return s;
+  }
+  void open(const std::string& name) {
+    if (name.back() == '/') { m_.push(std::make_unique<FilesScreen>(m_, dir_ + name)); return; }
+    std::string path = dir_ + name, data;
+    if (!m_.files->read(path, data)) return;
+    std::vector<std::string> lines{size(data.size())};
+    size_t pos = 0;
+    while (pos < data.size() && lines.size() < 9) {  // preview: first 8 lines, 36 chars each
+      size_t nl = data.find('\n', pos);
+      std::string l = data.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+      if (!l.empty() && l.back() == '\r') l.pop_back();
+      if (l.size() > 36) l = l.substr(0, 36);
+      lines.push_back(l);
+      if (nl == std::string::npos) break;
+      pos = nl + 1;
+    }
+    AppManager& m = m_;
+    m.push(std::make_unique<TextScreen>(name, lines, "file", "Delete", [&m, path] {
+      Item yes = fixed("Delete", [&m, path] { m.files->remove(path); m.requestPop(2); }, "alert");  // confirm + viewer
+      yes.tone = 1;
+      Items it;
+      it.push_back(std::move(yes));
+      it.push_back(fixed("Cancel", [&m] { m.requestPop(1); }));
+      m.push(std::make_unique<ListScreen>("Delete file?", std::move(it), "Select"));
+    }));
+  }
+  AppManager& m_;
+  std::string dir_;
+  int sel_ = 0;
+};
+
+class AlarmEditScreen : public Screen {  // enter HHMM on the keypad
+ public:
+  AlarmEditScreen(AppManager& m, int idx) : m_(m), idx_(idx) {}
+  bool onKey(Key k) override {
+    int d = digitOf(k);
+    if (d >= 0 && buf_.size() < 4) { buf_ += char('0' + d); note_.clear(); }
+    else if ((k == Key::Soft2 || k == Key::Back) && !buf_.empty()) { buf_.pop_back(); note_.clear(); }
+    else if (k == Key::Ok || k == Key::Soft1) {
+      if (buf_.size() != 4) { note_ = "Enter 4 digits (HHMM)"; return true; }
+      int h = std::atoi(buf_.substr(0, 2).c_str()), mi = std::atoi(buf_.substr(2).c_str());
+      if (h > 23 || mi > 59) { note_ = "Invalid time"; return true; }
+      auto& al = m_.device.alarms;
+      if (idx_ < 0) al.push_back({h * 60 + mi, "Alarm", true});
+      else if (idx_ < int(al.size())) al[idx_].minutes = h * 60 + mi;
+      m_.saveSettings();
+      m_.requestPop();
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = idx_ < 0 ? "New alarm" : "Edit alarm";
+    v.layout = Layout::Dial;
+    std::string p = buf_;
+    while (p.size() < 4) p += '_';
+    v.lines = {p.substr(0, 2) + ":" + p.substr(2), note_};
+    v.keys = {"Save", "", buf_.empty() ? "Back" : "Clear"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  int idx_;
+  std::string buf_, note_;
+};
+
+std::unique_ptr<Screen> makeAlarmDetail(AppManager& m, int idx) {
+  auto al = [&m, idx]() -> Device::Alarm& { return m.device.alarms[idx]; };
+  Item en = fixed("Enabled", [&m, al] { al().enabled = !al().enabled; m.saveSettings(); }, "alarm");
+  en.toggle = [al] { return al().enabled ? 1 : 0; };
+  Item tm = fixed("Time", [&m, idx] { m.push(std::make_unique<AlarmEditScreen>(m, idx)); }, "clock");
+  tm.trail = [al] { return hhmm(al().minutes); };
+  Item del = fixed("Delete", [&m, idx] {
+    m.device.alarms.erase(m.device.alarms.begin() + idx);
+    m.saveSettings();
+    m.requestPop();
+  }, "alert");
+  del.tone = 1;
+  Items it;
+  it.push_back(std::move(en));
+  it.push_back(std::move(tm));
+  it.push_back(std::move(del));
+  return std::make_unique<ListScreen>(hhmm(al().minutes), std::move(it), "Select");
+}
+
+class AlarmsScreen : public Screen {
+ public:
+  explicit AlarmsScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    int n = int(m_.device.alarms.size());
+    sel_ = n ? std::min(sel_, n - 1) : 0;
+    if (k == Key::Soft1) {
+      if (n >= 10) m_.notifications.add("Alarms", "Limit of 10 alarms reached");
+      else m_.push(std::make_unique<AlarmEditScreen>(m_, -1));
+    } else if (!n) return false;
+    else if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok) m_.push(makeAlarmDetail(m_, sel_));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Alarms";
+    for (auto& a : m_.device.alarms) {
+      Row r;
+      r.text = hhmm(a.minutes);
+      r.sub = a.label;
+      r.lead = "alarm";
+      r.toggle = a.enabled ? 1 : 0;
+      v.rows.push_back(std::move(r));
+    }
+    if (v.rows.empty()) { Row r; r.text = "No alarms"; v.rows.push_back(r); }
+    else v.selected = std::min(sel_, int(v.rows.size()) - 1);
+    v.keys = {"Add", m_.device.alarms.empty() ? "" : "Edit", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  int sel_ = 0;
+};
+
+struct Net { const char* ssid; bool secured, saved; };
+const Net kNets[] = {{"Home-5G", true, true}, {"Office", true, true}, {"CafeFree", false, false}, {"Neighbor", true, false}};
 
 struct Contact { const char *name, *number; };
 const Contact kContacts[] = {{"Ali", "0300 1112233"}, {"Mum", "0321 4445566"}, {"Office", "042 35001234"}, {"Zara", "0333 7778899"}};
@@ -282,7 +518,11 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
            fixed("Calc", [&m] { m.push(makeCalculator(m)); }, "calc", "Calculator"),
            fixed("Camera", [&m] { m.push(makeCamera(m)); }, "camera", "Camera"),
            fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot", "Hotspot"),
-           fixed("SIM", [&m] { m.push(makeSimManager(m)); }, "sim", "SIM manager")};
+           fixed("SIM", [&m] { m.push(makeSimManager(m)); }, "sim", "SIM manager"),
+           fixed("Alarms", [&m] { m.push(makeAlarms(m)); }, "alarm", "Alarms"),
+           fixed("Files", [&m] { m.push(makeFiles(m)); }, "files", "File manager"),
+           fixed("Connect", [&m] { m.push(makeConnectivity(m)); }, "connect", "Connectivity"),
+           fixed("Battery", [&m] { m.push(makeBattery(m)); }, "battery", "Battery")};
   return std::make_unique<ListScreen>("Menu", std::move(it), "Open", true, 3);
 }
 
@@ -291,7 +531,7 @@ std::unique_ptr<Screen> makeContacts(AppManager& m) {
   for (auto& c : kContacts) {
     std::string name = c.name, number = c.number;
     it.push_back(fixed(name, [&m, name, number] {
-      m.push(std::make_unique<TextScreen>(name, std::vector<std::string>{number}, avatar(name),
+      m.push(std::make_unique<TextScreen>(name, std::vector<std::string>{number}, avatar(name), "Call",
                                           [&m, number] { m.push(makePhone(m, digitsOf(number))); }));
     }, avatar(name), number));
   }
@@ -325,7 +565,7 @@ std::unique_ptr<Screen> makeCallHistory(AppManager&) {
 }
 
 std::unique_ptr<Screen> makeSettings(AppManager& m) {
-  Item wifi = fixed("Wi-Fi", [&m] { m.device.wifi = !m.device.wifi; m.saveSettings(); }, "wifi");
+  Item wifi = fixed("Wi-Fi", [&m] { setWifi(m, !m.device.wifi); }, "wifi");
   wifi.toggle = [&m] { return m.device.wifi ? 1 : 0; };
   Item bt = fixed("Bluetooth", [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }, "bluetooth");
   bt.toggle = [&m] { return m.device.bluetooth ? 1 : 0; };
@@ -351,19 +591,12 @@ std::unique_ptr<Screen> makeClock(AppManager& m) { return std::make_unique<Clock
 std::unique_ptr<Screen> makeCalculator(AppManager&) { return std::make_unique<CalcScreen>(); }
 std::unique_ptr<Screen> makeCamera(AppManager& m) { return std::make_unique<CameraScreen>(m); }
 
-std::unique_ptr<Screen> makeGallery(AppManager& m) {
-  if (m.device.photos.empty()) return std::make_unique<TextScreen>("Gallery", std::vector<std::string>{"No photos yet"}, "camera");
-  Items it;
-  for (auto& p : m.device.photos) it.push_back(fixed(p, {}, "image", "Simulated placeholder"));
-  return std::make_unique<ListScreen>("Gallery", std::move(it), "");
-}
-
 std::unique_ptr<Screen> makeHotspot(AppManager& m) {
   Item on = fixed("Hotspot", [&m] {
     auto& d = m.device;
-    if (!d.hotspot && !(d.simActive() && d.dataSim >= 0)) {  // needs an active data SIM
-      m.notifications.add("Hotspot", "No active SIM for mobile data");
-      m.log.log(Level::Warn, "hotspot", "refused: no active data SIM");
+    if (!d.hotspot && !d.dataUsable()) {  // needs a SIM with usable mobile data
+      m.notifications.add("Hotspot", "No usable mobile data (check SIM, data, airplane mode)");
+      m.log.log(Level::Warn, "hotspot", "refused: no usable mobile data");
       return;
     }
     d.hotspot = !d.hotspot;
@@ -432,6 +665,57 @@ std::unique_ptr<Screen> makeSimManager(AppManager& m) {
     it.push_back(std::move(r));
   }
   return std::make_unique<ListScreen>("SIM manager", std::move(it), "Open");
+}
+
+std::unique_ptr<Screen> makeNotifications(AppManager& m) { return std::make_unique<NotificationsScreen>(m); }
+std::unique_ptr<Screen> makeBattery(AppManager& m) { return std::make_unique<BatteryScreen>(m); }
+std::unique_ptr<Screen> makeFiles(AppManager& m) { return std::make_unique<FilesScreen>(m, ""); }
+std::unique_ptr<Screen> makeAlarms(AppManager& m) { return std::make_unique<AlarmsScreen>(m); }
+
+std::unique_ptr<Screen> makeWifiNetworks(AppManager& m) {
+  Items it;
+  for (auto& n : kNets) {
+    std::string ssid = n.ssid;
+    bool secured = n.secured, saved = n.saved;
+    Item r = fixed(ssid, [&m, ssid, secured, saved] {
+      if (!m.device.wifi) { m.notifications.add("Wi-Fi", "Turn Wi-Fi on first"); return; }
+      if (secured && !saved) { m.notifications.add("Wi-Fi", "Password entry is not supported yet"); return; }
+      m.device.wifiSsid = ssid;
+      m.saveSettings();
+    }, "wifi");
+    r.sub = [&m, ssid, secured, saved] {
+      if (m.device.wifi && m.device.wifiSsid == ssid) return std::string("Connected");
+      return std::string(saved ? "Saved" : secured ? "Secured" : "Open");
+    };
+    it.push_back(std::move(r));
+  }
+  return std::make_unique<ListScreen>("Wi-Fi networks", std::move(it), "Connect");
+}
+
+std::unique_ptr<Screen> makeConnectivity(AppManager& m) {
+  Item wifi = fixed("Wi-Fi", [&m] { setWifi(m, !m.device.wifi); }, "wifi");
+  wifi.toggle = [&m] { return m.device.wifi ? 1 : 0; };
+  wifi.sub = [&m] { return !m.device.wifi ? std::string("Off") : m.device.wifiSsid.empty() ? std::string("Not connected") : m.device.wifiSsid; };
+  Item nets = fixed("Wi-Fi networks", [&m] { m.push(makeWifiNetworks(m)); }, "wifi", "Scan and connect");
+  Item bt = fixed("Bluetooth", [&m] { m.device.bluetooth = !m.device.bluetooth; m.saveSettings(); }, "bluetooth", "Device pairing not built yet");
+  bt.toggle = [&m] { return m.device.bluetooth ? 1 : 0; };
+  Item data = fixed("Mobile data", [&m] { m.device.mobileData = !m.device.mobileData; m.saveSettings(); }, "mobile");
+  data.toggle = [&m] { return m.device.mobileData ? 1 : 0; };
+  data.sub = [&m] {
+    return !m.device.simActive() ? std::string("No active SIM") : m.device.dataUsable() ? "Using SIM " + std::to_string(m.device.dataSim + 1) : std::string("Not in use");
+  };
+  Item air = fixed("Airplane mode", [&m] {
+    auto& d = m.device;
+    d.airplane = !d.airplane;
+    if (d.airplane) d.wifi = d.bluetooth = d.hotspot = false;  // radios off (they can be switched back on individually)
+    m.saveSettings();
+  }, "airplane");
+  air.toggle = [&m] { return m.device.airplane ? 1 : 0; };
+  Item hs = fixed("Hotspot", [&m] { m.push(makeHotspot(m)); }, "hotspot");
+  hs.trail = [&m] { return std::string(m.device.hotspot ? "On" : "Off"); };
+  Items it;
+  for (Item* i : {&wifi, &nets, &bt, &data, &air, &hs}) it.push_back(std::move(*i));
+  return std::make_unique<ListScreen>("Connectivity", std::move(it), "Select");
 }
 
 }  // namespace fai

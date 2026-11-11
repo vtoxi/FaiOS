@@ -1,6 +1,7 @@
 #include "services.h"
 
 #include <algorithm>
+#include <set>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -38,6 +39,20 @@ bool MemStorage::write(const std::string& key, const std::string& data) {
   return true;
 }
 
+static bool safeDir(const std::string& d) { return d.empty() || safeKey(d); }
+
+std::vector<std::string> MemStorage::list(const std::string& dir) {
+  std::set<std::string> out;
+  if (!safeDir(dir)) return {};
+  for (auto& [k, v] : m_) {
+    if (k.compare(0, dir.size(), dir) != 0) continue;
+    std::string rest = k.substr(dir.size());
+    size_t slash = rest.find('/');
+    out.insert(slash == std::string::npos ? rest : rest.substr(0, slash + 1));
+  }
+  return {out.begin(), out.end()};
+}
+
 bool FileStorage::read(const std::string& key, std::string& out) {
   if (!safeKey(key)) return false;
   std::ifstream f(fs::path(root_) / key, std::ios::binary);
@@ -63,6 +78,24 @@ bool FileStorage::write(const std::string& key, const std::string& data) {
   fs::rename(tmp, dst, ec);  // atomic replace on POSIX
   if (ec) { fs::remove(tmp, ec); return false; }
   return true;
+}
+
+std::vector<std::string> FileStorage::list(const std::string& dir) {
+  std::set<std::string> out;
+  std::error_code ec;
+  if (!safeDir(dir)) return {};
+  for (auto& e : fs::directory_iterator(fs::path(root_) / dir, ec)) {
+    std::string n = e.path().filename().string();
+    if (n.size() > 4 && n.compare(n.size() - 4, 4, ".tmp") == 0) continue;  // in-flight atomic write
+    out.insert(e.is_directory(ec) ? n + "/" : n);
+  }
+  return {out.begin(), out.end()};
+}
+
+bool FileStorage::remove(const std::string& key) {
+  std::error_code ec;
+  fs::path p = fs::path(root_) / key;
+  return safeKey(key) && fs::is_regular_file(p, ec) && fs::remove(p, ec);
 }
 
 bool FileStorage::exists(const std::string& key) {

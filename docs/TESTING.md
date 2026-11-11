@@ -8,3 +8,5 @@ Not covered: the LVGL renderer and SDL input (verified manually by user in a WSL
 M3 tests cover: logger ring/filter, storage atomic overwrite and path-traversal rejection, config round-trip and junk values, notifications, power clamping, service start order/rollback, settings persisting through Config.
 
 App tests: calculator maths (chaining, divide-by-zero, decimals, backspace, length cap), calculator keys, stopwatch with a fake clock, camera/gallery, SIM manager + hotspot rules, launcher reaches all 10 apps.
+
+More app tests: storage list/remove (mem + file), file manager browse/view/delete-confirm, connectivity + airplane, battery screen, alarms (edit validation, persistence, firing once per minute), notifications screen.

@@ -41,3 +41,9 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [ ] Not built: File manager, Connectivity, Battery info apps; alarms; real camera/modem
 
 - [x] New apps visually checked in the live window: user approved (2026-11-11)
+
+## Remaining apps (simulated, 14 apps total)
+- [x] Alarms (add/edit/enable/delete, fire as notifications once per minute, persisted), File manager (browses `~/.faios`, view, delete with confirm), Connectivity (Wi-Fi, networks, Bluetooth, mobile data, airplane mode, hotspot), Battery info (percent, state, voltage, temperature; all SIMULATED), Notifications screen (Up on Home)
+- [x] Camera is capture-only: Gallery removed per request (no gallery, no photo files)
+- Not built: Bluetooth device pairing, Wi-Fi password entry, alarm labels/ringtones, alarm ring screen (alarms appear as notifications)
+- [ ] Visual check of these screens in the live window — pending

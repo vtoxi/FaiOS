@@ -17,7 +17,7 @@ bool keyFromName(const std::string& name, Key& out);  // used for the configurab
 
 struct Softkeys { std::string left, center, right; };
 
-enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera };
+enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera, Battery };
 
 // One list/grid entry. lead: icon name ("call", "wifi", ...) or "@A" for a letter avatar.
 struct Row {
@@ -30,7 +30,7 @@ struct Row {
 // What a screen wants drawn. The renderer (LVGL today) is dumb and just draws this.
 //   List/Grid: rows + selected.  Home: lines = {time, date[, badge text]}.
 //   Text: lines (wrapped body) + optional lead avatar.  Dial: lines = {number, note}.
-//   Clock: lines = {HH:MM, date, stopwatch}.  Calc: lines = {pending expression, display}.  Camera: lines = {note, photo count}.
+//   Clock: lines = {HH:MM, date, stopwatch}.  Calc: lines = {pending expression, display}.  Camera: lines = {note, photo count}.  Battery: lines = {percent, state, voltage, temperature, note}.
 struct View {
   std::string title;
   Layout layout = Layout::List;
