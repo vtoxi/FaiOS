@@ -20,10 +20,19 @@ struct MediaFile {
 
 constexpr const char* kPhotoDir = "DCIM/";
 constexpr const char* kVideoDir = "Videos/";
+constexpr const char* kMusicDir = "Music/";
+constexpr const char* kRecDir = "Recordings/";
 
 // Images from DCIM/ then videos from Videos/. Within a folder, names sort descending (IMG_0010 before IMG_0009).
 std::vector<MediaFile> listGallery(IStorage& s);
 std::string nextPhotoName(IStorage& s);  // "IMG_0001.bmp", then the number after the highest existing IMG_nnnn
+
+// Files of one kind in one folder, names sorted descending.
+std::vector<MediaFile> listMedia(IStorage& s, const std::string& dir, MediaKind kind);
+std::string nextRecordingName(IStorage& s);  // "REC_0001.wav", then highest + 1
+// SIMULATED recording: a valid 8 kHz 16-bit mono WAV holding silence (no microphone is assumed). 1..600 s, else "".
+std::string makeWav(int seconds);
+std::string formatClock(long long ms);  // "m:ss"
 
 // 24-bit uncompressed Windows BMP. makeBmp draws a SIMULATED placeholder image (gradient + disc) from a seed.
 std::string makeBmp(int w, int h, uint32_t seed);

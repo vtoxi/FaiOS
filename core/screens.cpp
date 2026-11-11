@@ -928,6 +928,143 @@ class GalleryScreen : public Screen {  // live thumbnail grid (re-read every dra
   int sel_ = 0;
 };
 
+// ---- Media apps. ALL SIMULATED: no audio/video output, tuner or microphone is assumed (hardware unknown). ----
+std::string volumeBar(int v) { return "Volume " + std::to_string(v) + "/10"; }
+
+class PlayerScreen : public Screen {  // simulated playback: a timer only. Duration is unknown without a decoder.
+ public:
+  PlayerScreen(AppManager& m, std::string dir, MediaKind kind, std::string key) : m_(m), dir_(std::move(dir)), kind_(kind), key_(std::move(key)) {}
+  bool onKey(Key k) override {
+    auto f = items();
+    int i = indexOf(f);
+    if (i < 0) return false;
+    int n = int(f.size());
+    if (k == Key::Ok) {
+      if (playing_) { accum_ += m_.nowMs() - start_; playing_ = false; }
+      else { start_ = m_.nowMs(); playing_ = true; }
+    } else if (k == Key::Left || k == Key::Right) {
+      key_ = f[(i + (k == Key::Right ? 1 : n - 1)) % n].key;
+      accum_ = 0;
+      start_ = m_.nowMs();
+    } else if (k == Key::Up) vol_ = std::min(10, vol_ + 1);
+    else if (k == Key::Down) vol_ = std::max(0, vol_ - 1);
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.layout = Layout::Text;
+    v.lead = kind_ == MediaKind::Video ? "video" : "music";
+    auto f = items();
+    int i = indexOf(f);
+    v.keys = {"", "", "Back"};
+    if (i < 0) { v.title = kind_ == MediaKind::Video ? "Videos" : "Music"; v.lines = {"File not found"}; return v; }
+    v.title = stem(f[i].name);
+    long long el = accum_ + (playing_ ? m_.nowMs() - start_ : 0);
+    v.keys.center = playing_ ? "Pause" : "Play";
+    v.lines = {f[i].name, std::string(playing_ ? "Playing " : "Paused ") + formatClock(el) + "   " + std::to_string(i + 1) + "/" + std::to_string(f.size()), volumeBar(vol_),
+               kind_ == MediaKind::Video ? "SIMULATED: timer only, no video decoder." : "SIMULATED: timer only, no audio output."};
+    return v;
+  }
+ private:
+  std::vector<MediaFile> items() const { return m_.files ? listMedia(*m_.files, dir_, kind_) : std::vector<MediaFile>(); }
+  int indexOf(const std::vector<MediaFile>& f) const {
+    for (size_t i = 0; i < f.size(); i++) if (f[i].key == key_) return int(i);
+    return -1;
+  }
+  AppManager& m_;
+  std::string dir_;
+  MediaKind kind_;
+  std::string key_;
+  bool playing_ = false;
+  long long start_ = 0, accum_ = 0;
+  int vol_ = 5;
+};
+
+std::unique_ptr<Screen> makeMediaList(AppManager& m, const std::string& title, const std::string& dir, MediaKind kind, const std::string& emptyHint) {
+  if (!m.files) return std::make_unique<TextScreen>(title, std::vector<std::string>{"Storage unavailable"}, "alert");
+  auto files = listMedia(*m.files, dir, kind);
+  if (files.empty()) return std::make_unique<TextScreen>(title, std::vector<std::string>{emptyHint}, kind == MediaKind::Video ? "video" : "music");
+  Items it;
+  for (auto& f : files) {
+    std::string key = f.key;
+    it.push_back(fixed(stem(f.name), [&m, dir, kind, key] { m.push(std::make_unique<PlayerScreen>(m, dir, kind, key)); }, kind == MediaKind::Video ? "video" : "music", f.name));
+  }
+  return std::make_unique<ListScreen>(title, std::move(it), "Play");
+}
+
+class RadioScreen : public Screen {  // SIMULATED tuner: remembers a frequency, never receives anything
+ public:
+  explicit RadioScreen(AppManager&) {}
+  bool onKey(Key k) override {
+    int d = digitOf(k);
+    if (k == Key::Ok) on_ = !on_;
+    else if (k == Key::Left) freq_ = freq_ <= 875 ? 1080 : freq_ - 1;
+    else if (k == Key::Right) freq_ = freq_ >= 1080 ? 875 : freq_ + 1;
+    else if (k == Key::Up) vol_ = std::min(10, vol_ + 1);
+    else if (k == Key::Down) vol_ = std::max(0, vol_ - 1);
+    else if (k == Key::Soft1) { presets_[next_] = freq_; next_ = (next_ + 1) % 9; }
+    else if (d >= 1 && presets_[d - 1]) freq_ = presets_[d - 1];
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "FM Radio";
+    v.layout = Layout::Text;
+    v.lead = "radio";
+    char f[24];
+    std::snprintf(f, sizeof f, "%d.%d MHz", freq_ / 10, freq_ % 10);
+    std::string p;
+    for (int i = 0; i < 9; i++)
+      if (presets_[i]) {
+        char b[24];
+        std::snprintf(b, sizeof b, "%s%d: %d.%d", p.empty() ? "" : "   ", i + 1, presets_[i] / 10, presets_[i] % 10);
+        p += b;
+      }
+    v.lines = {f, std::string(on_ ? "On" : "Off") + "   " + volumeBar(vol_), p.empty() ? "No presets. Save adds one." : p, "SIMULATED: no FM tuner assumed; nothing is received."};
+    v.keys = {"Save", on_ ? "Off" : "On", "Back"};
+    return v;
+  }
+ private:
+  bool on_ = false;
+  int freq_ = 987, vol_ = 5, next_ = 0;  // tenths of MHz, 87.5-108.0
+  int presets_[9] = {};
+};
+
+class RecorderScreen : public Screen {  // SIMULATED: writes a valid WAV that holds silence
+ public:
+  explicit RecorderScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    if (k == Key::Ok) {
+      if (!m_.files) note_ = "Storage unavailable";
+      else if (!rec_) { rec_ = true; start_ = m_.nowMs(); note_.clear(); }
+      else {
+        rec_ = false;
+        int sec = int(std::min<long long>(600, (m_.nowMs() - start_) / 1000));
+        std::string name = nextRecordingName(*m_.files), wav = makeWav(std::max(1, sec));
+        note_ = !wav.empty() && m_.files->write(kRecDir + name, wav) ? "Saved " + name + " (simulated silence)" : "Could not save the recording";
+      }
+    } else if (k == Key::Soft1) m_.push(makeMediaList(m_, "Recordings", kRecDir, MediaKind::Audio, "No recordings yet."));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Recorder";
+    v.layout = Layout::Text;
+    v.lead = "mic";
+    v.lines = {rec_ ? "Recording " + formatClock(m_.nowMs() - start_) : "Ready", note_.empty() ? "SIMULATED: no microphone assumed; saves silence." : note_};
+    v.keys = {"Recordings", rec_ ? "Stop" : "Record", "Back"};
+    return v;
+  }
+ private:
+  AppManager& m_;
+  bool rec_ = false;
+  long long start_ = 0;
+  std::string note_;
+};
+
 // ---- Calendar (local events; Google Calendar sync is a later phase) ----
 const char* const kMonthNames[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 const char* const kDayNames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -1211,7 +1348,11 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
                                                                 {fixed("Call history", {}, "history"), [&m] { return makeCallHistory(m); }}})),
       tile("Messages", "mail", "Messages", [&m] { return makeMessages(m); }),
       tile("Camera", "camera", "Camera", [&m] { return makeCamera(m); }),
-      tile("Gallery", "image", "Photos & videos", [&m] { return makeGallery(m); }),
+      tile("Media", "music", "Gallery, Music, Radio", group("Media", {{fixed("Gallery", {}, "image", "Photos & videos"), [&m] { return makeGallery(m); }},
+                                                                       {fixed("Music", {}, "music"), [&m] { return makeMusic(m); }},
+                                                                       {fixed("Videos", {}, "video"), [&m] { return makeVideos(m); }},
+                                                                       {fixed("FM Radio", {}, "radio", "Simulated"), [&m] { return makeRadio(m); }},
+                                                                       {fixed("Recorder", {}, "mic", "Simulated"), [&m] { return makeRecorder(m); }}})),
       tile("Calendar", "calendar", "Calendar", [&m] { return makeCalendar(m); }),
       tile("Clock", "clock", "Clock & Alarms", group("Clock", {{fixed("Clock", {}, "clock", "Time and stopwatch"), [&m] { return makeClock(m); }},
                                                                 {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
@@ -1369,6 +1510,10 @@ std::unique_ptr<Screen> makeAccounts(AppManager& m) { return std::make_unique<Ac
 std::unique_ptr<Screen> makeVpn(AppManager& m) { return std::make_unique<VpnScreen>(m); }
 std::unique_ptr<Screen> makeCalendar(AppManager& m) { return std::make_unique<CalendarScreen>(m); }
 std::unique_ptr<Screen> makeGallery(AppManager& m) { return std::make_unique<GalleryScreen>(m); }
+std::unique_ptr<Screen> makeMusic(AppManager& m) { return makeMediaList(m, "Music", kMusicDir, MediaKind::Audio, "No music yet. Copy audio files into the Music folder."); }
+std::unique_ptr<Screen> makeVideos(AppManager& m) { return makeMediaList(m, "Videos", kVideoDir, MediaKind::Video, "No videos yet. Copy video files into the Videos folder."); }
+std::unique_ptr<Screen> makeRadio(AppManager& m) { return std::make_unique<RadioScreen>(m); }
+std::unique_ptr<Screen> makeRecorder(AppManager& m) { return std::make_unique<RecorderScreen>(m); }
 std::unique_ptr<Screen> makeSnake(AppManager& m) { return std::make_unique<SnakeScreen>(m); }
 std::unique_ptr<Screen> makeTicTacToe(AppManager& m) { return std::make_unique<TicTacToeScreen>(m); }
 std::unique_ptr<Screen> makeGuess(AppManager& m) { return std::make_unique<GuessScreen>(m); }

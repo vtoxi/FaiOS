@@ -35,6 +35,42 @@ std::vector<MediaFile> listGallery(IStorage& s) {
   return v;
 }
 
+std::vector<MediaFile> listMedia(IStorage& s, const std::string& dir, MediaKind kind) { return inDir(s, dir, kind); }
+
+std::string nextRecordingName(IStorage& s) {
+  int hi = 0;
+  for (auto& n : s.list(kRecDir)) {
+    int num = 0;
+    if (std::sscanf(n.c_str(), "REC_%d", &num) == 1) hi = std::max(hi, num);
+  }
+  char b[24];
+  std::snprintf(b, sizeof b, "REC_%04d.wav", hi + 1);
+  return b;
+}
+
+std::string formatClock(long long ms) {
+  long long s = std::max(0LL, ms) / 1000;
+  char b[32];
+  std::snprintf(b, sizeof b, "%lld:%02lld", s / 60, s % 60);
+  return b;
+}
+
+static void le32(std::string& o, uint32_t v);
+static void le16(std::string& o, uint16_t v);
+
+std::string makeWav(int seconds) {
+  if (seconds < 1 || seconds > 600) return "";
+  const uint32_t rate = 8000, bytes = uint32_t(seconds) * rate * 2;
+  std::string o = "RIFF";
+  le32(o, 36 + bytes);
+  o += "WAVEfmt ";
+  le32(o, 16); le16(o, 1); le16(o, 1); le32(o, rate); le32(o, rate * 2); le16(o, 2); le16(o, 16);
+  o += "data";
+  le32(o, bytes);
+  o.append(bytes, '\0');
+  return o;
+}
+
 std::string nextPhotoName(IStorage& s) {
   int hi = 0;
   for (auto& n : s.list(kPhotoDir)) {

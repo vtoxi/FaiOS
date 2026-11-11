@@ -177,6 +177,8 @@ static void test_gallery_menu_tile() {
   auto* m = boot();
   press(*m, Key::Ok);
   auto v = m->top()->view();
-  CHECK(v.rows.size() == 9 && v.rows[3].text == "Gallery" && v.rows[3].sub == "Photos & videos" && v.rows[2].text == "Camera");
+  CHECK(v.rows.size() == 9 && v.rows[3].text == "Media" && v.rows[2].text == "Camera");
+  press(*m, Key::Num4);
+  CHECK(m->top()->view().rows[0].text == "Gallery" && m->top()->view().rows[0].sub == "Photos & videos");  // Gallery lives in the Media group
   delete m;
 }

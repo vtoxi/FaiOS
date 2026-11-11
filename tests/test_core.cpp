@@ -19,7 +19,7 @@ static void press(AppManager& m, Key k) { m.handleKey(k); }
 struct AppPath { const char* name; int top, sub; const char* title; int downs; };  // downs >= 0: Down x N then OK inside the item
 static const AppPath kApps[] = {
     {"Dialer", 1, 1, "Phone", -1},   {"Contacts", 1, 2, "Contacts", -1},    {"Call history", 1, 3, "Call history", -1},
-    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1}, {"Gallery", 4, 0, "Gallery", -1}, {"Calendar", 5, 0, "Calendar", -1},
+    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1}, {"Gallery", 4, 1, "Gallery", -1}, {"Music", 4, 2, "Music", -1}, {"Videos", 4, 3, "Videos", -1}, {"FM Radio", 4, 4, "FM Radio", -1}, {"Recorder", 4, 5, "Recorder", -1}, {"Calendar", 5, 0, "Calendar", -1},
     {"Clock", 6, 1, "Clock", -1},    {"Alarms", 6, 2, "Alarms", -1},
     {"Snake", 7, 1, "Snake", -1}, {"Tic-Tac-Toe", 7, 2, "Tic-Tac-Toe", -1}, {"Number guess", 7, 3, "Number guess", -1},
     {"Calculator", 8, 1, "Calculator", -1}, {"Files", 8, 2, "Files", -1},
@@ -362,6 +362,7 @@ static void test_settings_persist() {
 #include "test_vpn.inc"
 #include "test_games.inc"
 #include "test_gallery.inc"
+#include "test_media_apps.inc"
 
 int main() {
   test_launcher_and_back();
@@ -446,6 +447,12 @@ int main() {
   test_camera_and_gallery_screens();
   test_gallery_browse_view_delete();
   test_gallery_menu_tile();
+  test_media_helpers();
+  test_media_group_menu();
+  test_music_player();
+  test_videos_app();
+  test_fm_radio();
+  test_recorder();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();

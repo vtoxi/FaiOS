@@ -83,6 +83,7 @@ static const Ic kIcons[] = {
     {"battery", LV_SYMBOL_BATTERY_FULL, 0x4ADE80}, {"alert", LV_SYMBOL_WARNING, 0xF59E0B},
     {"mobile", LV_SYMBOL_DOWNLOAD, 0x60A5FA},    {"airplane", LV_SYMBOL_SHUFFLE, 0x94A3B8},         {"calc", LV_SYMBOL_KEYBOARD, 0x2DD4BF},
     {"camera", LV_SYMBOL_VIDEO, 0xF87171},       {"image", LV_SYMBOL_IMAGE, 0x38BDF8},       {"video", LV_SYMBOL_VIDEO, 0xFB923C},
+    {"music", LV_SYMBOL_AUDIO, 0xA78BFA},       {"radio", LV_SYMBOL_VOLUME_MAX, 0x34D399},  {"mic", LV_SYMBOL_PLAY, 0xF87171},
     {"hotspot", LV_SYMBOL_WIFI, 0x38BDF8},       {"sim", LV_SYMBOL_SD_CARD, 0xFBBF24}};
 
 static const Ic* findIcon(const std::string& n) {
