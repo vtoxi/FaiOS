@@ -940,12 +940,19 @@ class PlayerScreen : public Screen {  // simulated playback: a timer only. Durat
     if (i < 0) return false;
     int n = int(f.size());
     if (k == Key::Ok) {
-      if (playing_) { accum_ += m_.nowMs() - start_; playing_ = false; }
-      else { start_ = m_.nowMs(); playing_ = true; }
-    } else if (k == Key::Left || k == Key::Right) {
-      key_ = f[(i + (k == Key::Right ? 1 : n - 1)) % n].key;
+      long long pos = position(f[i]);
+      if (playing_) { accum_ = pos; playing_ = false; }
+      else { if (dur_ >= 0 && pos >= dur_) pos = 0; accum_ = pos; start_ = m_.nowMs(); playing_ = true; }  // play at the end restarts
+    } else if (k == Key::Left || k == Key::Right) {  // seek 10 s; the end of a known-length file stops there
+      long long pos = std::max(0LL, position(f[i]) + (k == Key::Right ? 10000 : -10000));
+      if (dur_ >= 0) pos = std::min(pos, dur_);
+      accum_ = pos;
+      start_ = m_.nowMs();
+    } else if (k == Key::Num1 || k == Key::Num3) {
+      key_ = f[(i + (k == Key::Num3 ? 1 : n - 1)) % n].key;
       accum_ = 0;
       start_ = m_.nowMs();
+      dur_ = -2;
     } else if (k == Key::Up) vol_ = std::min(10, vol_ + 1);
     else if (k == Key::Down) vol_ = std::max(0, vol_ - 1);
     else return false;
@@ -960,10 +967,12 @@ class PlayerScreen : public Screen {  // simulated playback: a timer only. Durat
     v.keys = {"", "", "Back"};
     if (i < 0) { v.title = kind_ == MediaKind::Video ? "Videos" : "Music"; v.lines = {"File not found"}; return v; }
     v.title = stem(f[i].name);
-    long long el = accum_ + (playing_ ? m_.nowMs() - start_ : 0);
-    v.keys.center = playing_ ? "Pause" : "Play";
-    v.lines = {f[i].name, std::string(playing_ ? "Playing " : "Paused ") + formatClock(el) + "   " + std::to_string(i + 1) + "/" + std::to_string(f.size()), volumeBar(vol_),
-               kind_ == MediaKind::Video ? "SIMULATED: timer only, no video decoder." : "SIMULATED: timer only, no audio output."};
+    long long el = position(f[i]);
+    bool done = dur_ >= 0 && el >= dur_, live = playing_ && !done;
+    v.keys.center = live ? "Pause" : "Play";
+    v.lines = {f[i].name, std::string(done ? "Finished " : live ? "Playing " : "Paused ") + formatClock(el) + (dur_ >= 0 ? " / " + formatClock(dur_) : "") + "   " + std::to_string(i + 1) + "/" + std::to_string(f.size()), volumeBar(vol_),
+               kind_ == MediaKind::Video ? "SIMULATED: timer only, no video decoder." : "SIMULATED: timer only, no audio output.",
+               dur_ >= 0 ? "Left/Right seek 10 s, 1/3 track" : "Length unknown. Left/Right seek 10 s, 1/3 track"};
     return v;
   }
  private:
@@ -972,10 +981,17 @@ class PlayerScreen : public Screen {  // simulated playback: a timer only. Durat
     for (size_t i = 0; i < f.size(); i++) if (f[i].key == key_) return int(i);
     return -1;
   }
+  // Current position in ms. The length is known only for WAV (read once per track); everything else has no decoder, so no length.
+  long long position(const MediaFile& f) const {
+    if (dur_ == -2) { std::string d; dur_ = m_.files && m_.files->read(f.key, d) ? wavDurationMs(d) : -1; }
+    long long p = accum_ + (playing_ ? m_.nowMs() - start_ : 0);
+    return dur_ >= 0 ? std::min(p, dur_) : p;
+  }
   AppManager& m_;
   std::string dir_;
   MediaKind kind_;
   std::string key_;
+  mutable long long dur_ = -2;  // -2 not read yet, -1 unknown
   bool playing_ = false;
   long long start_ = 0, accum_ = 0;
   int vol_ = 5;

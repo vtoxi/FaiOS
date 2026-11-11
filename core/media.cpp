@@ -48,6 +48,21 @@ std::string nextRecordingName(IStorage& s) {
   return b;
 }
 
+long long wavDurationMs(const std::string& d) {
+  if (d.size() < 44 || d.compare(0, 4, "RIFF") != 0 || d.compare(8, 4, "WAVE") != 0) return -1;
+  auto u32 = [&](size_t p) { return uint32_t(uint8_t(d[p])) | uint32_t(uint8_t(d[p + 1])) << 8 | uint32_t(uint8_t(d[p + 2])) << 16 | uint32_t(uint8_t(d[p + 3])) << 24; };
+  uint32_t byteRate = 0, dataBytes = 0;
+  for (size_t p = 12; p + 8 <= d.size();) {  // walk the chunks
+    uint32_t len = u32(p + 4);
+    if (d.compare(p, 4, "fmt ") == 0 && len >= 16 && p + 8 + 16 <= d.size()) byteRate = u32(p + 16);
+    else if (d.compare(p, 4, "data") == 0) { dataBytes = std::min<uint64_t>(len, d.size() - p - 8); break; }
+    uint64_t next = uint64_t(p) + 8 + len + (len & 1);
+    if (next > d.size()) break;
+    p = size_t(next);
+  }
+  return byteRate && dataBytes ? static_cast<long long>(uint64_t(dataBytes) * 1000 / byteRate) : -1;
+}
+
 std::string formatClock(long long ms) {
   long long s = std::max(0LL, ms) / 1000;
   char b[32];

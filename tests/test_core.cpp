@@ -453,6 +453,7 @@ int main() {
   test_videos_app();
   test_fm_radio();
   test_recorder();
+  test_seek();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();

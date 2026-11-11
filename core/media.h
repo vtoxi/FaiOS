@@ -32,6 +32,8 @@ std::vector<MediaFile> listMedia(IStorage& s, const std::string& dir, MediaKind 
 std::string nextRecordingName(IStorage& s);  // "REC_0001.wav", then highest + 1
 // SIMULATED recording: a valid 8 kHz 16-bit mono WAV holding silence (no microphone is assumed). 1..600 s, else "".
 std::string makeWav(int seconds);
+// Length of a PCM WAV in ms from its header; -1 if it is not a WAV this code understands (other formats: duration unknown).
+long long wavDurationMs(const std::string& data);
 std::string formatClock(long long ms);  // "m:ss"
 
 // 24-bit uncompressed Windows BMP. makeBmp draws a SIMULATED placeholder image (gradient + disc) from a seed.

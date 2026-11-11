@@ -61,12 +61,12 @@ static void test_music_player() {
   CHECK(m->top()->view().lines[2] == "Volume 10/10");
   for (int i = 0; i < 20; i++) press(*m, Key::Down);
   CHECK(m->top()->view().lines[2] == "Volume 0/10");
-  press(*m, Key::Right);                                                    // next track restarts the timer, wraps around
+  press(*m, Key::Num3);                                                     // next track restarts the timer, wraps around
   v = m->top()->view();
   CHECK(title(*m) == "alpha" && v.lines[1] == "Paused 0:00   2/2");
-  press(*m, Key::Right);
+  press(*m, Key::Num3);
   CHECK(title(*m) == "beta");
-  press(*m, Key::Left);
+  press(*m, Key::Num1);
   CHECK(title(*m) == "alpha");
   store.remove("Music/alpha.mp3");                                          // vanished behind the player's back
   CHECK(m->top()->view().lines[0] == "File not found");
@@ -168,5 +168,54 @@ static void test_recorder() {
   launch(*n, "Recorder");
   press(*n, Key::Ok);
   CHECK(n->top()->view().lines[1] == "Storage unavailable" && n->top()->view().lines[0] == "Ready");  // refuses to "record" nowhere
+  delete n;
+}
+
+static void test_seek() {
+  MemStorage store;
+  auto* m = boot();
+  m->files = &store;
+  long long now = 0;
+  m->nowMs = [&] { return now; };
+  store.write("Music/song.mp3", "not decodable");   // length unknown
+  launch(*m, "Music");
+  press(*m, Key::Ok);
+  auto v = m->top()->view();
+  CHECK(v.lines[1] == "Paused 0:00   1/1" && v.lines[4].find("Length unknown") == 0);   // says so instead of inventing a length
+  press(*m, Key::Left);
+  CHECK(m->top()->view().lines[1] == "Paused 0:00   1/1");                             // cannot seek before the start
+  press(*m, Key::Right); press(*m, Key::Right);
+  CHECK(m->top()->view().lines[1] == "Paused 0:20   1/1");
+  press(*m, Key::Left);
+  CHECK(m->top()->view().lines[1] == "Paused 0:10   1/1");
+  press(*m, Key::Ok);                                                                  // play from 0:10, then seek while playing
+  now += 5000;
+  press(*m, Key::Right);
+  CHECK(m->top()->view().lines[1] == "Playing 0:25   1/1");                            // 10 + 5 played + 10 skipped
+  now += 1000;
+  CHECK(m->top()->view().lines[1] == "Playing 0:26   1/1");                            // clock keeps running from the new spot
+  press(*m, Key::Left); press(*m, Key::Left); press(*m, Key::Left);
+  CHECK(m->top()->view().lines[1] == "Playing 0:00   1/1");
+  delete m;
+
+  // a WAV has a known length: seeking clamps to it and play at the end restarts
+  auto* n = boot();
+  n->files = &store;
+  n->nowMs = [&] { return now; };
+  store.write("Recordings/REC_0001.wav", makeWav(25));
+  CHECK(wavDurationMs(makeWav(25)) == 25000 && wavDurationMs("junk") == -1 && wavDurationMs(makeWav(25).substr(0, 30)) == -1);
+  CHECK(wavDurationMs(makeWav(25).substr(0, 44 + 8000)) == 500);                       // truncated file: only the bytes that exist count
+  launch(*n, "Recorder");
+  press(*n, Key::Soft1);
+  press(*n, Key::Ok);
+  v = n->top()->view();
+  CHECK(v.lines[1] == "Paused 0:00 / 0:25   1/1" && v.lines[4].find("Length unknown") == std::string::npos);
+  press(*n, Key::Right); press(*n, Key::Right); press(*n, Key::Right);
+  CHECK(n->top()->view().lines[1] == "Finished 0:25 / 0:25   1/1");
+  press(*n, Key::Ok);                                                                  // at the end: Play starts over
+  CHECK(n->top()->view().lines[1] == "Playing 0:00 / 0:25   1/1");
+  now += 40000;                                                                        // plays past the end -> stops at the end
+  v = n->top()->view();
+  CHECK(v.lines[1] == "Finished 0:25 / 0:25   1/1" && v.keys.center == "Play");
   delete n;
 }
