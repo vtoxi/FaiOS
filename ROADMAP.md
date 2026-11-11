@@ -61,3 +61,17 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] Visual check of grouped menu: user approved
 
 - Device work paused by owner (2026-11-11): cannot connect the phone for now. Resume with label photo, then data-cable USB retry. Dual SIM noted (E-5).
+
+## Menu changes
+- [x] Network (Connectivity, Hotspot, SIM manager) moved into System; System = Settings, Connectivity, Hotspot, SIM manager, Battery. Top level: Phone, Messages, Camera, Clock, Tools, System (Games/Calendar/Media will fill the grid)
+- [x] Fixed: status-bar clock overlapped the icon group; truncated tile labels; text cards overflowing
+
+## Accounts & Google sync
+- [x] Phase 1 core (mock-tested): JSON, PKCE/OAuth, token refresh/revoke, account manager, fail-closed secret box, Settings -> Accounts screens (+ simulator-only `[MOCK]` sign-in with `--mock-google`)
+- [ ] Phase 1 gaps: AES-GCM tests (need OpenSSL dev files), real HTTP/TLS transport, external-browser + loopback redirect, PIN-derived key, a real Google OAuth client (owner must create)
+- [ ] Phase 2 Contacts sync, Phase 3 Calendar sync (+ native calendar app), Phase 4 offline queue/conflicts, Phase 5 Gmail/Drive. **None started.** Needs SQLite dev files.
+- Google rule found: device flow cannot request Contacts/Calendar scopes (docs/GOOGLE_AUTH.md)
+
+## Queued, not started
+- Network manager + WireGuard VPN core; browser engine abstraction + tab memory manager; YouTube evaluation; Media apps (simulated); Games + Calendar app wiring (logic written, untested); multi-tap text entry
+- Buildroot QEMU image: build in progress (toolchain compile), not yet booted

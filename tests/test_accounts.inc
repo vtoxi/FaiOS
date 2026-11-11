@@ -369,3 +369,113 @@ static void test_aes_gcm_secret_box() {
   CHECK(t.am->accessToken("1100223344").token == "ACCESS-1");
 }
 #endif
+
+// ---- Settings -> Accounts screens (real AccountManager, MOCK transport) ----
+static void openAccounts(AppManager& m) {
+  launch(m, "Settings");
+  for (int i = 0; i < 3; i++) press(m, Key::Down);  // Wi-Fi, Bluetooth, Brightness, then Accounts
+  press(m, Key::Ok);
+}
+
+static void test_accounts_screens() {
+  Rig t;
+  auto* m = boot();
+  m->accounts = t.am.get();
+  launch(*m, "Settings");
+  for (int i = 0; i < 3; i++) press(*m, Key::Down);
+  CHECK(m->top()->view().rows[3].text == "Accounts" && m->top()->view().rows[3].trail == "0");
+  press(*m, Key::Ok);
+  CHECK(title(*m) == "Accounts" && m->top()->view().rows.size() == 1 && m->top()->view().rows[0].text == "Add account");
+  press(*m, Key::Ok);
+  CHECK(title(*m) == "Add account" && m->top()->view().rows.size() == 1);  // no [MOCK] row without the simulator flag
+  press(*m, Key::Ok);
+  CHECK(title(*m) == "Google");
+  auto lines = m->top()->view().lines;
+  CHECK(lines.back().find("external browser") != std::string::npos && lines.size() == 2);  // configured + secure storage OK
+  delete m;
+
+  // each missing prerequisite is reported, not hidden
+  Rig bare;
+  bare.am->configure(OAuthClient());
+  auto* b = boot();
+  b->accounts = bare.am.get();
+  openAccounts(*b);
+  press(*b, Key::Ok);
+  press(*b, Key::Ok);
+  std::string all;
+  for (auto& l : b->top()->view().lines) all += l + "|";
+  CHECK(all.find("client ID") != std::string::npos);
+  delete b;
+  NoSecretBox none;
+  Rig nosec(&none);
+  auto* c = boot();
+  c->accounts = nosec.am.get();
+  openAccounts(*c);
+  press(*c, Key::Ok);
+  press(*c, Key::Ok);
+  all.clear();
+  for (auto& l : c->top()->view().lines) all += l + "|";
+  CHECK(all.find("No secure storage") != std::string::npos);
+  delete c;
+
+  auto* d = boot();  // service unavailable
+  launch(*d, "Settings");
+  for (int i = 0; i < 3; i++) press(*d, Key::Down);
+  CHECK(d->top()->view().rows[3].trail == "-");
+  press(*d, Key::Ok);
+  CHECK(d->top()->view().rows[0].sub == "Service unavailable");
+  press(*d, Key::Ok);
+  CHECK(title(*d) == "Accounts");  // nothing to open
+  delete d;
+}
+
+static void test_account_detail_and_sign_out() {
+  Rig t;
+  std::string id = t.signIn("openid email profile https://www.googleapis.com/auth/contacts.readonly");
+  auto* m = boot();
+  m->accounts = t.am.get();
+  openAccounts(*m);
+  auto v = m->top()->view();
+  CHECK(v.rows.size() == 2 && v.rows[1].text == "Ayesha Khan" && v.rows[1].sub == "ayesha@example.com" && v.rows[1].trail == "OK");
+  press(*m, Key::Down);
+  press(*m, Key::Ok);
+  v = m->top()->view();
+  CHECK(title(*m) == "Account" && v.rows.size() == 6 && v.rows[0].text == "Ayesha Khan" && v.rows[0].lead == "@A");
+  CHECK(v.rows[1].trail == "OK" && v.rows[2].trail == "Never" && v.rows[3].toggle == 0 && v.rows[4].toggle == 0);
+  for (int i = 0; i < 4; i++) press(*m, Key::Down);  // Sync calendar: scope was NOT granted
+  press(*m, Key::Ok);
+  CHECK(!t.am->find(id)->syncCalendar && m->notifications.count() == 1 && m->notifications.list()[0].body.find("Calendar") != std::string::npos);
+  press(*m, Key::Up);
+  press(*m, Key::Ok);  // Sync contacts: granted
+  CHECK(t.am->find(id)->syncContacts && m->top()->view().rows[3].toggle == 1);
+  t.am->markSynced(id);
+  CHECK(m->top()->view().rows[2].trail != "Never");
+  press(*m, Key::Down); press(*m, Key::Down);
+  press(*m, Key::Ok);  // Sign out -> confirmation
+  CHECK(title(*m) == "Sign out?");
+  press(*m, Key::Down);
+  press(*m, Key::Ok);  // Cancel
+  CHECK(title(*m) == "Account" && t.am->accounts().size() == 1);
+  press(*m, Key::Ok);
+  t.http.script.push_back({200, "", ""});
+  press(*m, Key::Ok);  // confirm
+  CHECK(title(*m) == "Accounts" && t.am->accounts().empty() && m->top()->view().rows.size() == 1);
+  CHECK(t.store.list("tokens/").empty());
+  delete m;
+}
+
+static void test_mock_signin_hook_is_visible_only_when_set() {
+  Rig t;
+  auto* m = boot();
+  m->accounts = t.am.get();
+  bool called = false;
+  m->mockSignIn = [&] { called = true; };
+  openAccounts(*m);
+  press(*m, Key::Ok);
+  auto v = m->top()->view();
+  CHECK(v.rows.size() == 2 && v.rows[1].text.find("[MOCK]") == 0);  // always labelled
+  press(*m, Key::Down);
+  press(*m, Key::Ok);
+  CHECK(called && title(*m) == "Accounts");
+  delete m;
+}

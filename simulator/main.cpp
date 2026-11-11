@@ -11,6 +11,7 @@
 #include <map>
 #include <sstream>
 
+#include "mock_google.h"
 #include "screens.h"
 
 using namespace fai;
@@ -67,6 +68,7 @@ static const Ic kIcons[] = {
     {"bluetooth", LV_SYMBOL_BLUETOOTH, 0x60A5FA}, {"brightness", LV_SYMBOL_EYE_OPEN, 0xF59E0B},
     {"info", LV_SYMBOL_FILE, 0x94A3B8},          {"call_in", LV_SYMBOL_CALL, 0x22C55E},
     {"call_out", LV_SYMBOL_CALL, 0x60A5FA},      {"call_miss", LV_SYMBOL_CALL, 0xEF4444},
+    {"accounts", LV_SYMBOL_HOME, 0xA78BFA},      {"calendar", LV_SYMBOL_DIRECTORY, 0x34D399},
     {"clock", LV_SYMBOL_LOOP, 0xF472B6},         {"alarm", LV_SYMBOL_BELL, 0xFB923C},
     {"files", LV_SYMBOL_DIRECTORY, 0xFBBF24},    {"folder", LV_SYMBOL_DIRECTORY, 0xFBBF24},
     {"file", LV_SYMBOL_FILE, 0x94A3B8},          {"connect", LV_SYMBOL_GPS, 0x22D3EE},
@@ -248,14 +250,19 @@ static void drawDial(lv_obj_t* scr, const View& v, int top) {
 }
 
 static void drawText(lv_obj_t* scr, const View& v, int top) {
-  rr(scr, 8, top + 4, W - 16, 170, 14, C_SURF);
-  int y = top + 16;
-  if (!v.lead.empty()) { drawLead(scr, v.lead, W / 2, y + 28, 56, false); y += 66; }
+  // Contact/message cards: avatar + larger text. Explanations (icon lead or none): compact, left-aligned, card fits the text.
+  const bool person = !v.lead.empty() && v.lead[0] == '@';
+  const lv_font_t* f = person ? F16 : F14;
+  const int bottom = H - SOFT - 6;
+  lv_obj_t* card = rr(scr, 8, top + 4, W - 16, 40, 14, C_SURF);  // height set after the text is measured
+  int y = top + 14;
+  if (!v.lead.empty()) { int d = person ? 56 : 36; drawLead(scr, v.lead, W / 2, y + d / 2, d, false); y += d + 10; }
   for (auto& l : v.lines) {
-    lv_obj_t* o = label(scr, l, F16, C_TXT, 20, y, W - 40, v.lead.empty() ? LV_TEXT_ALIGN_LEFT : LV_TEXT_ALIGN_CENTER, true);
+    lv_obj_t* o = label(scr, l, f, C_TXT, 20, y, W - 40, person ? LV_TEXT_ALIGN_CENTER : LV_TEXT_ALIGN_LEFT, true);
     lv_obj_update_layout(o);
     y += lv_obj_get_height(o) + 6;
   }
+  lv_obj_set_height(card, std::min(y + 8, bottom) - (top + 4));
 }
 
 static void drawHome(lv_obj_t* scr, const View& v) {
@@ -357,6 +364,8 @@ static int onSdlEvent(void*, SDL_Event* e) {
 
 int main(int argc, char** argv) {
   defaultKeys();
+  bool mockGoogle = false;
+  for (int i = 1; i < argc; i++) if (std::string(argv[i]) == "--mock-google") mockGoogle = true;
   std::string script, shotsDir = ".";
   for (int i = 1; i + 1 < argc; i++) {
     std::string a = argv[i];
@@ -385,6 +394,31 @@ int main(int argc, char** argv) {
   services.add(std::make_unique<FnService>("config", [&] { config.load(); g_mgr.config = &config; g_mgr.loadSettings(); return true; },
                                            [&] { g_mgr.saveSettings(); g_mgr.config = nullptr; }));
   services.startAll();
+
+  // Accounts. Real transport does not exist yet (NullHttp = always offline); --mock-google swaps in a MOCK.
+  SystemRandom rng;
+  NullHttp nullHttp;
+  MockGoogleHttp mockHttp("mock-client");
+#ifdef FAIOS_HAVE_OPENSSL
+  AesGcmSecretBox box(machineKeyMaterial(), rng);
+#else
+  NoSecretBox box;  // no OpenSSL: tokens are refused, never stored in plaintext
+#endif
+  AccountManager accounts(storage, box, mockGoogle ? static_cast<IHttp&>(mockHttp) : static_cast<IHttp&>(nullHttp), rng, g_mgr.log,
+                          [] { return static_cast<long long>(std::time(nullptr)) * 1000; });
+  OAuthClient oc;
+  oc.clientId = mockGoogle ? "mock-client" : config.getString("google_client_id");
+  oc.redirectUri = mockGoogle ? "http://127.0.0.1:8765/" : config.getString("google_redirect_uri");
+  oc.clientSecret = config.getString("google_client_secret");  // optional; from config, never from source
+  accounts.configure(oc);
+  accounts.load();
+  g_mgr.accounts = &accounts;
+  if (mockGoogle)
+    g_mgr.mockSignIn = [&] {
+      AuthRequest r = accounts.beginSignIn({scope::kOpenId, scope::kEmail, scope::kProfile});
+      AddResult res = accounts.completeSignIn(r, oc.redirectUri + "?code=MOCK&state=" + r.state);
+      if (res.status != AddStatus::Ok) g_mgr.notifications.add("Accounts", "Mock sign-in failed: " + (res.detail.empty() ? "see log" : res.detail));
+    };
 
   g_mgr.onChange = [] { g_dirty = true; };
   g_mgr.push(makeHome(g_mgr));

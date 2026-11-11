@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include "accounts.h"
 #include "screen.h"
 #include "services.h"
 
@@ -45,6 +46,8 @@ class AppManager {
   std::function<long long()> nowMs = [] {  // monotonic ms; tests inject a fake
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   };
+  AccountManager* accounts = nullptr;     // null = accounts service unavailable
+  std::function<void()> mockSignIn;       // set ONLY by the simulator's --mock-google flag
   IStorage* files = nullptr;  // browsed by the File manager; null = unavailable
   Config* config = nullptr;  // optional; when set, Settings changes persist
   std::function<void()> onChange;  // fired after any stack/key change (renderer hook)

@@ -489,6 +489,123 @@ class AlarmsScreen : public Screen {
   int sel_ = 0;
 };
 
+const char* statusText(AccountStatus s) { return s == AccountStatus::Active ? "OK" : s == AccountStatus::NeedsReauth ? "Sign in" : "Error"; }
+
+std::string lastSyncText(long long ms) {
+  if (ms <= 0) return "Never";
+  std::time_t t = std::time_t(ms / 1000);
+  char b[24];
+  std::strftime(b, sizeof b, "%d %b %H:%M", std::localtime(&t));
+  return b;
+}
+
+// Why real Google sign-in is not possible right now, in plain words (never pretends it works).
+std::vector<std::string> signInBlockers(AppManager& m) {
+  std::vector<std::string> v;
+  if (!m.accounts) { v.push_back("Accounts service is not running."); return v; }
+  if (!m.accounts->configured()) v.push_back("No Google OAuth client ID set up (see docs/GOOGLE_AUTH.md).");
+  if (!m.accounts->secureStorage()) v.push_back("No secure storage: tokens cannot be stored safely.");
+  v.push_back("Sign-in must open in an external browser, which FaiOS does not have yet.");
+  return v;
+}
+
+std::unique_ptr<Screen> makeAccountDetail(AppManager& m, const std::string& id) {
+  auto acct = [&m, id]() -> const Account* { return m.accounts ? m.accounts->find(id) : nullptr; };
+  Item who = fixed("Account");
+  who.label = [acct] { const Account* a = acct(); return a ? a->name : std::string("(removed)"); };
+  who.sub = [acct] { const Account* a = acct(); return a ? a->email : std::string(); };
+  { const Account* a0 = acct(); who.lead = avatar(a0 ? a0->name : "?"); }
+  Item st = fixed("Status", {}, "info");
+  st.trail = [acct] { const Account* a = acct(); return std::string(a ? statusText(a->status) : "-"); };
+  Item last = fixed("Last sync", {}, "clock");
+  last.trail = [acct] { const Account* a = acct(); return a ? lastSyncText(a->lastSyncMs) : std::string("-"); };
+  auto toggleItem = [&m, id, acct](const char* label, SyncService svc, const char* need) {
+    Item i = fixed(label, [&m, id, acct, svc, need] {
+      const Account* a = acct();
+      if (!a || !m.accounts) return;
+      bool now = svc == SyncService::Contacts ? a->syncContacts : a->syncCalendar;
+      if (!m.accounts->setSync(id, svc, !now))
+        m.notifications.add("Accounts", std::string(need) + " permission not granted for this account");
+    }, svc == SyncService::Contacts ? "contacts" : "calendar");
+    i.toggle = [acct, svc] { const Account* a = acct(); return a && (svc == SyncService::Contacts ? a->syncContacts : a->syncCalendar) ? 1 : 0; };
+    return i;
+  };
+  Item out = fixed("Sign out", [&m, id] {
+    Item yes = fixed("Sign out and revoke access", [&m, id] { if (m.accounts) m.accounts->remove(id); m.requestPop(2); }, "alert");
+    yes.tone = 1;
+    Items it;
+    it.push_back(std::move(yes));
+    it.push_back(fixed("Cancel", [&m] { m.requestPop(1); }));
+    m.push(std::make_unique<ListScreen>("Sign out?", std::move(it), "Select"));
+  }, "alert");
+  out.tone = 1;
+  Items it;
+  it.push_back(std::move(who));
+  it.push_back(std::move(st));
+  it.push_back(std::move(last));
+  it.push_back(toggleItem("Sync contacts", SyncService::Contacts, "Contacts"));
+  it.push_back(toggleItem("Sync calendar", SyncService::Calendar, "Calendar"));
+  it.push_back(std::move(out));
+  return std::make_unique<ListScreen>("Account", std::move(it), "Select");
+}
+
+std::unique_ptr<Screen> makeAddAccount(AppManager& m) {
+  Item google = fixed("Google", [&m] {
+    std::vector<std::string> lines = signInBlockers(m);
+    lines.insert(lines.begin(), "Sign in with Google:");
+    m.push(std::make_unique<TextScreen>("Google", lines, "info"));
+  }, "info", "Real sign-in");
+  Items it;
+  it.push_back(std::move(google));
+  if (m.mockSignIn)  // present only when the simulator was started with --mock-google
+    it.push_back(fixed("[MOCK] Test account", [&m] { m.mockSignIn(); m.requestPop(); }, "alert", "Simulator only, fake data"));
+  return std::make_unique<ListScreen>("Add account", std::move(it), "Select");
+}
+
+// Live list: "Add account" first, then each account (re-read every draw).
+class AccountsScreen : public Screen {
+ public:
+  explicit AccountsScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    int n = count();
+    sel_ = std::min(sel_, n - 1);
+    if (k == Key::Up) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Down) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok || k == Key::Soft1) {
+      if (!m_.accounts) return true;
+      if (sel_ == 0) m_.push(makeAddAccount(m_));
+      else m_.push(makeAccountDetail(m_, m_.accounts->accounts()[sel_ - 1].id));
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Accounts";
+    Row add;
+    add.text = "Add account";
+    add.sub = m_.accounts ? "Google" : "Service unavailable";
+    add.lead = "contacts";
+    v.rows.push_back(add);
+    if (m_.accounts)
+      for (auto& a : m_.accounts->accounts()) {
+        Row r;
+        r.text = a.name;
+        r.sub = a.email;
+        r.lead = avatar(a.name);
+        r.trail = statusText(a.status);
+        r.tone = a.status == AccountStatus::Active ? 0 : 1;
+        v.rows.push_back(std::move(r));
+      }
+    v.selected = std::min(sel_, int(v.rows.size()) - 1);
+    v.keys = {"", "Open", "Back"};
+    return v;
+  }
+ private:
+  int count() const { return 1 + (m_.accounts ? int(m_.accounts->accounts().size()) : 0); }
+  AppManager& m_;
+  int sel_ = 0;
+};
+
 struct Net { const char* ssid; bool secured, saved; };
 const Net kNets[] = {{"Home-5G", true, true}, {"Office", true, true}, {"CafeFree", false, false}, {"Neighbor", true, false}};
 
@@ -533,13 +650,13 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
       tile("Camera", "camera", "Camera", [&m] { return makeCamera(m); }),
       tile("Clock", "clock", "Clock & Alarms", group("Clock", {{fixed("Clock", {}, "clock", "Time and stopwatch"), [&m] { return makeClock(m); }},
                                                                 {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
-      tile("Network", "connect", "Network & SIM", group("Network", {{fixed("Connectivity", {}, "connect", "Wi-Fi, Bluetooth, data"), [&m] { return makeConnectivity(m); }},
-                                                                    {fixed("Hotspot", {}, "hotspot"), [&m] { return makeHotspot(m); }},
-                                                                    {fixed("SIM manager", {}, "sim"), [&m] { return makeSimManager(m); }}})),
       tile("Tools", "calc", "Calculator & Files", group("Tools", {{fixed("Calculator", {}, "calc"), [&m] { return makeCalculator(m); }},
                                                                   {fixed("File manager", {}, "files"), [&m] { return makeFiles(m); }}})),
-      tile("System", "settings", "Settings & Battery", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
-                                                                        {fixed("Battery", {}, "battery"), [&m] { return makeBattery(m); }}}))};
+      tile("System", "settings", "Settings & Network", group("System", {{fixed("Settings", {}, "settings"), [&m] { return makeSettings(m); }},
+                                                                         {fixed("Connectivity", {}, "connect", "Wi-Fi, Bluetooth, data"), [&m] { return makeConnectivity(m); }},
+                                                                         {fixed("Hotspot", {}, "hotspot"), [&m] { return makeHotspot(m); }},
+                                                                         {fixed("SIM manager", {}, "sim"), [&m] { return makeSimManager(m); }},
+                                                                         {fixed("Battery", {}, "battery"), [&m] { return makeBattery(m); }}}))};
   return std::make_unique<ListScreen>("Menu", std::move(it), "Open", true, 3);
 }
 
@@ -596,10 +713,13 @@ std::unique_ptr<Screen> makeSettings(AppManager& m) {
     m.push(std::make_unique<TextScreen>("About", std::vector<std::string>{
                "FaiOS 0.1", "Desktop simulator", "No hardware target", "Settings saved to storage"}, "info"));
   }, "info");
+  Item acct = fixed("Accounts", [&m] { m.push(makeAccounts(m)); }, "accounts");
+  acct.trail = [&m] { return m.accounts ? std::to_string(m.accounts->accounts().size()) : std::string("-"); };
   Items it;
   it.push_back(std::move(wifi));
   it.push_back(std::move(bt));
   it.push_back(std::move(br));
+  it.push_back(std::move(acct));
   it.push_back(std::move(about));
   return std::make_unique<ListScreen>("Settings", std::move(it), "Change");
 }
@@ -684,6 +804,7 @@ std::unique_ptr<Screen> makeSimManager(AppManager& m) {
   return std::make_unique<ListScreen>("SIM manager", std::move(it), "Open");
 }
 
+std::unique_ptr<Screen> makeAccounts(AppManager& m) { return std::make_unique<AccountsScreen>(m); }
 std::unique_ptr<Screen> makeNotifications(AppManager& m) { return std::make_unique<NotificationsScreen>(m); }
 std::unique_ptr<Screen> makeBattery(AppManager& m) { return std::make_unique<BatteryScreen>(m); }
 std::unique_ptr<Screen> makeFiles(AppManager& m) { return std::make_unique<FilesScreen>(m, ""); }

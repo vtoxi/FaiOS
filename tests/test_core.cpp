@@ -13,16 +13,16 @@ static int failures = 0;
 static std::string title(AppManager& m) { return m.top()->view().title; }
 static void press(AppManager& m, Key k) { m.handleKey(k); }
 
-// Menu paths: {app, top-level tile (1..7), item inside the tile (0 = tile opens the app directly)}.
-// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Clock, 5 Network, 6 Tools, 7 System.
+// Menu paths: {app, top-level tile (1..6), item inside the tile (0 = tile opens the app directly)}.
+// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Clock, 5 Tools, 6 System.
 struct AppPath { const char* name; int top, sub; const char* title; };
 static const AppPath kApps[] = {
     {"Dialer", 1, 1, "Phone"},   {"Contacts", 1, 2, "Contacts"},    {"Call history", 1, 3, "Call history"},
     {"Messages", 2, 0, "Messages"}, {"Camera", 3, 0, "Camera"},
     {"Clock", 4, 1, "Clock"},    {"Alarms", 4, 2, "Alarms"},
-    {"Connectivity", 5, 1, "Connectivity"}, {"Hotspot", 5, 2, "Hotspot"}, {"SIM manager", 5, 3, "SIM manager"},
-    {"Calculator", 6, 1, "Calculator"}, {"Files", 6, 2, "Files"},
-    {"Settings", 7, 1, "Settings"}, {"Battery", 7, 2, "Battery"}};
+    {"Calculator", 5, 1, "Calculator"}, {"Files", 5, 2, "Files"},
+    {"Settings", 6, 1, "Settings"}, {"Connectivity", 6, 2, "Connectivity"}, {"Hotspot", 6, 3, "Hotspot"},
+    {"SIM manager", 6, 4, "SIM manager"}, {"Battery", 6, 5, "Battery"}};
 
 // From Home: open the menu, then the tile, then the item.
 static void launch(AppManager& m, const char* app) {
@@ -71,7 +71,7 @@ static void test_grouped_menu() {
   auto* m = boot();
   press(*m, Key::Ok);
   auto v = m->top()->view();
-  CHECK(v.layout == Layout::Grid && v.rows.size() == 7);
+  CHECK(v.layout == Layout::Grid && v.rows.size() == 6);
   CHECK(v.rows[0].text == "Phone" && v.rows[0].sub == "Phone & Contacts");
   press(*m, Key::Num1);  // Phone tile opens a short list, not the dialer
   v = m->top()->view();
@@ -89,10 +89,10 @@ static void test_grouped_menu() {
   delete m;
 }
 
-static void test_grid_navigation() {  // launcher: 7 tiles, 3 columns
+static void test_grid_navigation() {  // launcher: 6 tiles, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 7);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 6);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
@@ -113,12 +113,12 @@ static void test_grid_navigation() {  // launcher: 7 tiles, 3 columns
   delete m;
 }
 
-static void test_list_navigation_wraps() {  // settings: 4-item vertical list
+static void test_list_navigation_wraps() {  // settings: 5-item vertical list
   auto* m = boot();
   launch(*m, "Settings");
   CHECK(m->top()->view().layout == Layout::List && m->top()->view().selected == 0);
   press(*m, Key::Up);
-  CHECK(m->top()->view().selected == 3);
+  CHECK(m->top()->view().selected == 4);
   press(*m, Key::Down);
   CHECK(m->top()->view().selected == 0);
   delete m;
@@ -368,6 +368,9 @@ int main() {
   test_tampered_tokens_need_reauth();
   test_scope_changes_and_sync_flags();
   test_remove_account();
+  test_accounts_screens();
+  test_account_detail_and_sign_out();
+  test_mock_signin_hook_is_visible_only_when_set();
 #ifdef FAIOS_HAVE_OPENSSL
   test_aes_gcm_secret_box();
 #else
