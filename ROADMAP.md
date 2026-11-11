@@ -47,3 +47,10 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] Camera is capture-only: Gallery removed per request (no gallery, no photo files)
 - Not built: Bluetooth device pairing, Wi-Fi password entry, alarm labels/ringtones, alarm ring screen (alarms appear as notifications)
 - [x] Visual check of these screens in the live window: user approved
+
+## M6/M7 — Hardware discovery & firmware preservation (documents only, no device work yet)
+- [x] HARDWARE_DISCOVERY.md: fields marked UNKNOWN with web LEADS kept separate from evidence; tiered plan; battery safety notes; decision gates
+- [x] FIRMWARE_PRESERVATION.md: backup/verify/restore-path procedure (nothing executed)
+- [x] `build/scripts/usb-inventory.ps1` (read-only); first run saw a MediaTek Preloader device (E-2), identity unconfirmed
+- [ ] Confirm E-2 is the phone; photograph the label under the battery; FCC ID lookup
+- [ ] Nothing flashed, read back or modified. No compatibility claim.
