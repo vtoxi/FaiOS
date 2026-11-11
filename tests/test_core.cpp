@@ -363,6 +363,7 @@ static void test_settings_persist() {
 #include "test_games.inc"
 #include "test_gallery.inc"
 #include "test_media_apps.inc"
+#include "test_browser.inc"
 
 int main() {
   test_launcher_and_back();
@@ -454,6 +455,9 @@ int main() {
   test_fm_radio();
   test_recorder();
   test_seek();
+  test_url_policy();
+  test_tab_manager();
+  test_tab_budgets();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();
