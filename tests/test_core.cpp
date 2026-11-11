@@ -455,6 +455,7 @@ int main() {
   test_fm_radio();
   test_recorder();
   test_seek();
+  test_video_and_audio_recording_options();
   test_url_policy();
   test_tab_manager();
   test_tab_budgets();

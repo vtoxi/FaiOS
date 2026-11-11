@@ -408,10 +408,15 @@ static void drawCamera(lv_obj_t* scr, const View& v, int top) {
     rr(scr, cx, cy + (i / 2 ? c - t : 0), c, t, 0, col);
     rr(scr, cx + (i % 2 ? c - t : 0), cy, t, c, 0, col);
   }
+  if (v.lines.size() > 4) {  // mode chip and REC indicator
+    rr(scr, x + 8, y + 26 + 6, 56, 20, 10, C_SURF2);
+    label(scr, v.lines[2], F12, C_TXT, x + 8, y + 32 + 2, 56, LV_TEXT_ALIGN_CENTER);
+    if (!v.lines[3].empty()) { rr(scr, x + w - 86, y + 32, 10, 10, 5, C_DANGER); label(scr, v.lines[3], F14, C_DANGER, x + w - 72, y + 29, 64); }
+  }
   label(scr, "SIMULATED PREVIEW", F12, C_DIM, x, y + 70, w, LV_TEXT_ALIGN_CENTER);
   label(scr, "no camera hardware", F12, C_OFF, x, y + 88, w, LV_TEXT_ALIGN_CENTER);
-  label(scr, v.lines[0].empty() ? "Press OK to capture" : v.lines[0], F14, v.lines[0].empty() ? C_DIM : C_OK, 8, y + h + 8, W - 16, LV_TEXT_ALIGN_CENTER);
-  label(scr, "Photos: " + v.lines[1], F12, C_DIM, 8, y + h + 28, W - 16, LV_TEXT_ALIGN_CENTER);
+  label(scr, v.lines[0].empty() ? (v.lines.size() > 3 && !v.lines[3].empty() ? "Press OK to stop" : v.lines.size() > 2 && v.lines[2] == "Video" ? "Press OK to record" : "Press OK to capture") : v.lines[0], F14, v.lines[0].empty() ? C_DIM : C_OK, 8, y + h + 8, W - 16, LV_TEXT_ALIGN_CENTER);
+  label(scr, "Photos: " + v.lines[1] + (v.lines.size() > 4 ? "   Videos: " + v.lines[4] + "   < > mode" : ""), F12, C_DIM, 8, y + h + 28, W - 16, LV_TEXT_ALIGN_CENTER);
 }
 
 static void drawDial(lv_obj_t* scr, const View& v, int top) {

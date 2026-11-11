@@ -73,9 +73,25 @@ std::string formatClock(long long ms) {
 static void le32(std::string& o, uint32_t v);
 static void le16(std::string& o, uint16_t v);
 
-std::string makeWav(int seconds) {
+std::string nextVideoName(IStorage& s) {
+  int hi = 0;
+  for (auto& n : s.list(kVideoDir)) {
+    int num = 0;
+    if (std::sscanf(n.c_str(), "VID_%d", &num) == 1) hi = std::max(hi, num);
+  }
+  char b[24];
+  std::snprintf(b, sizeof b, "VID_%04d.mp4", hi + 1);
+  return b;
+}
+
+std::string makeVideoStub(int seconds) {
   if (seconds < 1 || seconds > 600) return "";
-  const uint32_t rate = 8000, bytes = uint32_t(seconds) * rate * 2;
+  return "FAIOS-SIMULATED-VIDEO\nNot real video: no camera hardware is assumed.\nduration_seconds=" + std::to_string(seconds) + "\n";
+}
+
+std::string makeWav(int seconds, int sampleRate) {
+  if (seconds < 1 || seconds > 600 || (sampleRate != 8000 && sampleRate != 16000)) return "";
+  const uint32_t rate = uint32_t(sampleRate), bytes = uint32_t(seconds) * rate * 2;
   std::string o = "RIFF";
   le32(o, 36 + bytes);
   o += "WAVEfmt ";

@@ -30,8 +30,11 @@ std::string nextPhotoName(IStorage& s);  // "IMG_0001.bmp", then the number afte
 // Files of one kind in one folder, names sorted descending.
 std::vector<MediaFile> listMedia(IStorage& s, const std::string& dir, MediaKind kind);
 std::string nextRecordingName(IStorage& s);  // "REC_0001.wav", then highest + 1
-// SIMULATED recording: a valid 8 kHz 16-bit mono WAV holding silence (no microphone is assumed). 1..600 s, else "".
-std::string makeWav(int seconds);
+// SIMULATED recording: a valid 16-bit mono WAV holding silence (no microphone is assumed). 1..600 s, else "".
+std::string makeWav(int seconds, int sampleRate = 8000);  // sampleRate 8000 or 16000, else ""
+// SIMULATED video recording: a small text stub (NOT playable video) named VID_nnnn.mp4 so the Gallery and Videos list it.
+std::string makeVideoStub(int seconds);
+std::string nextVideoName(IStorage& s);  // "VID_0001.mp4", then highest + 1
 // Length of a PCM WAV in ms from its header; -1 if it is not a WAV this code understands (other formats: duration unknown).
 long long wavDurationMs(const std::string& data);
 std::string formatClock(long long ms);  // "m:ss"

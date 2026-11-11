@@ -245,7 +245,13 @@ class CameraScreen : public Screen {  // SIMULATED: no camera hardware. A captur
  public:
   explicit CameraScreen(AppManager& m) : m_(m) {}
   bool onKey(Key k) override {
-    if (k == Key::Ok) {
+    if (k == Key::Left || k == Key::Right) { if (!rec_) video_ = !video_; else return true; }  // mode cannot change mid-recording
+    else if (k == Key::Back && rec_) stopVideo();                                              // Back saves the take first, then a second Back leaves
+    else if (k == Key::Ok && video_) {
+      if (!m_.files) note_ = "Storage unavailable";
+      else if (!rec_) { rec_ = true; start_ = m_.nowMs(); note_.clear(); }
+      else stopVideo();
+    } else if (k == Key::Ok) {
       if (!m_.files) note_ = "Storage unavailable";
       else {
         std::string name = nextPhotoName(*m_.files);
@@ -262,13 +268,23 @@ class CameraScreen : public Screen {  // SIMULATED: no camera hardware. A captur
     v.layout = Layout::Camera;
     int n = 0;
     if (m_.files) for (auto& f : listGallery(*m_.files)) n += f.kind == MediaKind::Image;
-    v.lines = {note_, std::to_string(n)};
-    v.keys = {"Gallery", "Capture", "Back"};
+    int vids = 0;
+    if (m_.files) for (auto& f : listGallery(*m_.files)) vids += f.kind == MediaKind::Video;
+    v.lines = {note_, std::to_string(n), video_ ? "Video" : "Photo", rec_ ? "REC " + formatClock(m_.nowMs() - start_) : "", std::to_string(vids)};
+    v.keys = {"Gallery", video_ ? (rec_ ? "Stop" : "Record") : "Capture", "Back"};
     return v;
   }
  private:
+  void stopVideo() {
+    rec_ = false;
+    int sec = int(std::min<long long>(600, (m_.nowMs() - start_) / 1000));
+    std::string name = nextVideoName(*m_.files), stub = makeVideoStub(std::max(1, sec));
+    note_ = !stub.empty() && m_.files->write(kVideoDir + name, stub) ? "Saved " + name + " (simulated, not real video)" : "Could not save the video";
+  }
   AppManager& m_;
   std::string note_;
+  bool video_ = false, rec_ = false;
+  long long start_ = 0;
 };
 
 // Shared rule: the Wi-Fi radio can't be a client and a hotspot at once (simulated).
@@ -1057,11 +1073,11 @@ class RecorderScreen : public Screen {  // SIMULATED: writes a valid WAV that ho
       else if (!rec_) { rec_ = true; start_ = m_.nowMs(); note_.clear(); }
       else {
         rec_ = false;
-        int sec = int(std::min<long long>(600, (m_.nowMs() - start_) / 1000));
-        std::string name = nextRecordingName(*m_.files), wav = makeWav(std::max(1, sec));
-        note_ = !wav.empty() && m_.files->write(kRecDir + name, wav) ? "Saved " + name + " (simulated silence)" : "Could not save the recording";
+        save();
       }
-    } else if (k == Key::Soft1) m_.push(makeMediaList(m_, "Recordings", kRecDir, MediaKind::Audio, "No recordings yet."));
+    } else if ((k == Key::Left || k == Key::Right) && !rec_) rate_ = rate_ == 8000 ? 16000 : 8000;   // quality cannot change mid-recording
+    else if (k == Key::Back && rec_) { rec_ = false; save(); }                                      // Back saves the take, a second Back leaves
+    else if (k == Key::Soft1) m_.push(makeMediaList(m_, "Recordings", kRecDir, MediaKind::Audio, "No recordings yet."));
     else return false;
     return true;
   }
@@ -1070,13 +1086,20 @@ class RecorderScreen : public Screen {  // SIMULATED: writes a valid WAV that ho
     v.title = "Recorder";
     v.layout = Layout::Text;
     v.lead = "mic";
-    v.lines = {rec_ ? "Recording " + formatClock(m_.nowMs() - start_) : "Ready", note_.empty() ? "SIMULATED: no microphone assumed; saves silence." : note_};
+    v.lines = {rec_ ? "Recording " + formatClock(m_.nowMs() - start_) : "Ready", note_.empty() ? "SIMULATED: no microphone assumed; saves silence." : note_,
+               std::string("Quality: ") + (rate_ == 8000 ? "Voice 8 kHz" : "Standard 16 kHz") + (rec_ ? "" : "  (Left/Right)")};
     v.keys = {"Recordings", rec_ ? "Stop" : "Record", "Back"};
     return v;
   }
  private:
+  void save() {
+    int sec = int(std::min<long long>(600, (m_.nowMs() - start_) / 1000));
+    std::string name = nextRecordingName(*m_.files), wav = makeWav(std::max(1, sec), rate_);
+    note_ = !wav.empty() && m_.files->write(kRecDir + name, wav) ? "Saved " + name + " (simulated silence)" : "Could not save the recording";
+  }
   AppManager& m_;
   bool rec_ = false;
+  int rate_ = 8000;
   long long start_ = 0;
   std::string note_;
 };

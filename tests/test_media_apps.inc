@@ -219,3 +219,66 @@ static void test_seek() {
   CHECK(v.lines[1] == "Finished 0:25 / 0:25   1/1" && v.keys.center == "Play");
   delete n;
 }
+
+static void test_video_and_audio_recording_options() {
+  CHECK(makeWav(1, 16000).size() == 44 + 32000 && wavDurationMs(makeWav(7, 16000)) == 7000 && makeWav(1, 44100).empty() && makeWav(1, 0).empty());
+  CHECK(makeVideoStub(0).empty() && makeVideoStub(601).empty() && makeVideoStub(5).find("FAIOS-SIMULATED-VIDEO") == 0 && makeVideoStub(5).find("duration_seconds=5") != std::string::npos);
+  MemStorage s;
+  CHECK(nextVideoName(s) == "VID_0001.mp4");
+  s.write("Videos/VID_0004.mp4", "x");
+  CHECK(nextVideoName(s) == "VID_0005.mp4");
+
+  MemStorage store;
+  auto* m = boot();
+  m->files = &store;
+  long long now = 1000;
+  m->nowMs = [&] { return now; };
+  launch(*m, "Camera");
+  auto v = m->top()->view();
+  CHECK(v.lines[2] == "Photo" && v.keys.center == "Capture" && v.lines[3].empty());
+  press(*m, Key::Right);                                                    // switch to video mode
+  v = m->top()->view();
+  CHECK(v.lines[2] == "Video" && v.keys.center == "Record");
+  press(*m, Key::Ok);
+  now += 4200;
+  v = m->top()->view();
+  CHECK(v.lines[3] == "REC 0:04" && v.keys.center == "Stop");
+  press(*m, Key::Left);                                                     // mode is locked while recording
+  CHECK(m->top()->view().lines[2] == "Video");
+  press(*m, Key::Ok);
+  v = m->top()->view();
+  CHECK(store.exists("Videos/VID_0001.mp4") && v.lines[0] == "Saved VID_0001.mp4 (simulated, not real video)" && v.lines[3].empty() && v.lines[4] == "1");
+  std::string data;
+  store.read("Videos/VID_0001.mp4", data);
+  CHECK(data == makeVideoStub(4) && !store.exists("DCIM/IMG_0001.bmp"));    // a video take does not create a photo
+  press(*m, Key::Ok);                                                       // sub-second take still saves
+  now += 50;
+  press(*m, Key::Back);                                                     // Back while recording saves, and stays
+  CHECK(title(*m) == "Camera" && store.exists("Videos/VID_0002.mp4") && m->top()->view().lines[3].empty());
+  press(*m, Key::Back);
+  CHECK(title(*m) != "Camera");
+  press(*m, Key::End);
+  launch(*m, "Videos");                                                     // recorded videos show up in the Videos app (and the Gallery)
+  CHECK(m->top()->view().rows.size() == 2);
+  delete m;
+
+  auto* r = boot();
+  r->files = &store;
+  r->nowMs = [&] { return now; };
+  launch(*r, "Recorder");
+  v = r->top()->view();
+  CHECK(v.lines[2] == "Quality: Voice 8 kHz  (Left/Right)");
+  press(*r, Key::Right);
+  CHECK(r->top()->view().lines[2] == "Quality: Standard 16 kHz  (Left/Right)");
+  press(*r, Key::Ok);
+  now += 2000;
+  CHECK(r->top()->view().lines[2] == "Quality: Standard 16 kHz");
+  press(*r, Key::Left);                                                     // locked while recording
+  CHECK(r->top()->view().lines[2] == "Quality: Standard 16 kHz");
+  press(*r, Key::Back);                                                     // saves, stays
+  std::string wav;
+  CHECK(title(*r) == "Recorder" && store.read("Recordings/REC_0001.wav", wav) && wav == makeWav(2, 16000) && wavDurationMs(wav) == 2000);
+  press(*r, Key::Back);
+  CHECK(title(*r) != "Recorder");
+  delete r;
+}
