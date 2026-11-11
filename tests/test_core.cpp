@@ -1,6 +1,7 @@
 // Plain-assert tests (no framework). Run via `ctest`.
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include "calc.h"
 #include "screens.h"
@@ -13,18 +14,18 @@ static int failures = 0, checks = 0;
 static std::string title(AppManager& m) { return m.top()->view().title; }
 static void press(AppManager& m, Key k) { m.handleKey(k); }
 
-// Menu paths: {app, top-level tile (1..8), item inside the tile (0 = tile opens the app directly)}.
-// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Calendar, 5 Clock, 6 Games, 7 Tools, 8 System.
+// Menu paths: {app, top-level tile (1..9), item inside the tile (0 = tile opens the app directly)}.
+// Top-level: 1 Phone, 2 Messages, 3 Camera, 4 Gallery, 5 Calendar, 6 Clock, 7 Games, 8 Tools, 9 System.
 struct AppPath { const char* name; int top, sub; const char* title; int downs; };  // downs >= 0: Down x N then OK inside the item
 static const AppPath kApps[] = {
     {"Dialer", 1, 1, "Phone", -1},   {"Contacts", 1, 2, "Contacts", -1},    {"Call history", 1, 3, "Call history", -1},
-    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1}, {"Calendar", 4, 0, "Calendar", -1},
-    {"Clock", 5, 1, "Clock", -1},    {"Alarms", 5, 2, "Alarms", -1},
-    {"Snake", 6, 1, "Snake", -1}, {"Tic-Tac-Toe", 6, 2, "Tic-Tac-Toe", -1}, {"Number guess", 6, 3, "Number guess", -1},
-    {"Calculator", 7, 1, "Calculator", -1}, {"Files", 7, 2, "Files", -1},
-    {"Settings", 8, 1, "Settings", -1}, {"Connectivity", 8, 2, "Connectivity", -1}, {"Battery", 8, 3, "Battery", -1},
+    {"Messages", 2, 0, "Messages", -1}, {"Camera", 3, 0, "Camera", -1}, {"Gallery", 4, 0, "Gallery", -1}, {"Calendar", 5, 0, "Calendar", -1},
+    {"Clock", 6, 1, "Clock", -1},    {"Alarms", 6, 2, "Alarms", -1},
+    {"Snake", 7, 1, "Snake", -1}, {"Tic-Tac-Toe", 7, 2, "Tic-Tac-Toe", -1}, {"Number guess", 7, 3, "Number guess", -1},
+    {"Calculator", 8, 1, "Calculator", -1}, {"Files", 8, 2, "Files", -1},
+    {"Settings", 9, 1, "Settings", -1}, {"Connectivity", 9, 2, "Connectivity", -1}, {"Battery", 9, 3, "Battery", -1},
     // reached through Connectivity (one owner each): rows are Wi-Fi, Wi-Fi networks, Bluetooth, Mobile data, Airplane, VPN, Hotspot, SIM manager
-    {"VPN", 8, 2, "VPN", 5}, {"Hotspot", 8, 2, "Hotspot", 6}, {"SIM manager", 8, 2, "SIM manager", 7}};
+    {"VPN", 9, 2, "VPN", 5}, {"Hotspot", 9, 2, "Hotspot", 6}, {"SIM manager", 9, 2, "SIM manager", 7}};
 
 // From Home: open the menu, then the tile, then the item.
 static void launch(AppManager& m, const char* app) {
@@ -77,7 +78,7 @@ static void test_grouped_menu() {
   auto* m = boot();
   press(*m, Key::Ok);
   auto v = m->top()->view();
-  CHECK(v.layout == Layout::Grid && v.rows.size() == 8);
+  CHECK(v.layout == Layout::Grid && v.rows.size() == 9);
   CHECK(v.rows[0].text == "Phone" && v.rows[0].sub == "Phone & Contacts");
   press(*m, Key::Num1);  // Phone tile opens a short list, not the dialer
   v = m->top()->view();
@@ -95,10 +96,10 @@ static void test_grouped_menu() {
   delete m;
 }
 
-static void test_grid_navigation() {  // launcher: 8 tiles, 3 columns
+static void test_grid_navigation() {  // launcher: 9 tiles, 3 columns
   auto* m = boot();
   press(*m, Key::Ok);
-  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 8);
+  CHECK(m->top()->view().layout == Layout::Grid && m->top()->view().rows.size() == 9);
   auto sel = [&] { return m->top()->view().selected; };
   CHECK(sel() == 0);
   press(*m, Key::Right);
@@ -222,7 +223,7 @@ static void test_one_owner_per_setting() {
   CHECK(wifi == 1 && bt == 1 && hs == 1 && sims == 1);
   press(*m, Key::End);
   press(*m, Key::Ok);
-  press(*m, Key::Num8);  // System group: Settings, Connectivity, Battery (no separate Hotspot / SIM entries)
+  press(*m, Key::Num9);  // System group: Settings, Connectivity, Battery (no separate Hotspot / SIM entries)
   auto v = m->top()->view();
   CHECK(v.rows.size() == 3 && v.rows[0].text == "Settings" && v.rows[1].text == "Connectivity" && v.rows[2].text == "Battery");
   delete m;
@@ -360,6 +361,7 @@ static void test_settings_persist() {
 #include "test_accounts.inc"
 #include "test_vpn.inc"
 #include "test_games.inc"
+#include "test_gallery.inc"
 
 int main() {
   test_launcher_and_back();
@@ -385,7 +387,6 @@ int main() {
   test_calc_logic();
   test_calc_screen_keys();
   test_clock_stopwatch();
-  test_camera();
   test_sim_manager_and_hotspot();
   test_storage_list_remove();
   test_file_manager();
@@ -439,6 +440,12 @@ int main() {
   test_guess_screen();
   test_calendar_screens();
   test_frame_is_harmless_on_other_screens();
+  test_media_kind();
+  test_bmp_codec();
+  test_gallery_listing();
+  test_camera_and_gallery_screens();
+  test_gallery_browse_view_delete();
+  test_gallery_menu_tile();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();

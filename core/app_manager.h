@@ -25,7 +25,6 @@ struct Device {
   bool hotspot = false;
   std::string hotspotName = "FaiOS-Hotspot", hotspotPass = "faios1234";
   int hotspotClients() const { return hotspot ? 2 : 0; }  // SIMULATED
-  std::vector<std::string> photos;                         // SIMULATED captures (names only)
   bool mobileData = true, airplane = false;
   std::string wifiSsid = "Home-5G";
   struct Alarm { int minutes; std::string label; bool enabled; };  // minutes since midnight

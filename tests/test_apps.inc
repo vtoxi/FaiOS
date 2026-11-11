@@ -86,20 +86,6 @@ static void test_clock_stopwatch() {
   delete m;
 }
 
-static void test_camera() {
-  auto* m = boot();
-  launch(*m, "Camera");
-  CHECK(title(*m) == "Camera" && m->top()->view().layout == Layout::Camera);
-  CHECK(m->top()->view().keys.left.empty());   // no gallery
-  press(*m, Key::Soft1);                       // nothing happens
-  CHECK(title(*m) == "Camera");
-  press(*m, Key::Ok);
-  press(*m, Key::Ok);
-  CHECK(m->device.photos.size() == 2 && m->device.photos[1] == "IMG_0002");
-  CHECK(m->top()->view().lines[0].find("simulated") != std::string::npos);  // never pretends to be real
-  delete m;
-}
-
 static void test_sim_manager_and_hotspot() {
   auto* m = boot();
   CHECK(m->status().signal == 4);

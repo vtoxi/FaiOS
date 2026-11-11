@@ -8,7 +8,7 @@ option(FAIOS_BUILD_SIMULATOR "Build the LVGL/SDL2 desktop simulator (needs netwo
 # Toolkit-independent core: screens, key routing, simulated device state.
 add_library(faios_core core/app_manager.cpp core/screens.cpp core/services.cpp core/calc.cpp core/games.cpp
             core/json.cpp core/crypto.cpp core/oauth.cpp core/secret_box.cpp core/accounts.cpp
-            core/events.cpp core/ip.cpp core/wireguard.cpp core/command.cpp core/wg_commands.cpp core/network.cpp core/vpn.cpp)
+            core/events.cpp core/media.cpp core/ip.cpp core/wireguard.cpp core/command.cpp core/wg_commands.cpp core/network.cpp core/vpn.cpp)
 target_include_directories(faios_core PUBLIC core)
 
 # Encrypted token storage needs a vetted crypto library. Without OpenSSL the secret box is unavailable
@@ -37,5 +37,6 @@ if(FAIOS_BUILD_SIMULATOR)
   target_link_libraries(lvgl PUBLIC SDL2::SDL2)
 
   add_executable(faios_sim simulator/main.cpp)
-  target_link_libraries(faios_sim faios_core lvgl)
+  find_package(ZLIB REQUIRED)
+  target_link_libraries(faios_sim faios_core lvgl ZLIB::ZLIB)
 endif()

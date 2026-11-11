@@ -27,6 +27,7 @@ std::unique_ptr<Screen> makeConnectivity(AppManager& m);
 std::unique_ptr<Screen> makeAccounts(AppManager& m);
 std::unique_ptr<Screen> makeVpn(AppManager& m);
 std::unique_ptr<Screen> makeCalendar(AppManager& m);
+std::unique_ptr<Screen> makeGallery(AppManager& m);
 std::unique_ptr<Screen> makeSnake(AppManager& m);
 std::unique_ptr<Screen> makeTicTacToe(AppManager& m);
 std::unique_ptr<Screen> makeGuess(AppManager& m);

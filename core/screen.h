@@ -17,7 +17,7 @@ bool keyFromName(const std::string& name, Key& out);  // used for the configurab
 
 struct Softkeys { std::string left, center, right; };
 
-enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera, Battery, Board, Calendar };
+enum class Layout { List, Grid, Home, Text, Dial, Clock, Calc, Camera, Battery, Board, Calendar, Photo };
 
 // One list/grid entry. lead: icon name ("call", "wifi", ...) or "@A" for a letter avatar.
 struct Row {
@@ -25,6 +25,7 @@ struct Row {
   int toggle = -1;      // -1 none, 0 off, 1 on (drawn as a switch)
   bool unread = false;  // accent dot
   int tone = 0;         // 0 normal, 1 danger
+  std::string image;    // storage key of an image to show as a thumbnail (Grid)
 };
 
 // What a screen wants drawn. The renderer (LVGL today) is dumb and just draws this.
@@ -32,6 +33,7 @@ struct Row {
 //   Text: lines (wrapped body) + optional lead avatar.  Dial: lines = {number, note}.
 //   Clock: lines = {HH:MM, date, stopwatch}.  Calc: lines = {pending expression, display}.  Camera: lines = {note, photo count}.  Battery: lines = {percent, state, voltage, temperature, note}.
 //   Board: lines[0] = status, lines[1..] = rows of cell characters ('.', 'o', '@', '*', 'X', 'O'); selected = highlighted cell (row-major).
+//   Photo: image = storage key, lines = {file name, "i / n   size"}.
 //   Calendar: lines = {month title, offset of the 1st (Mon=0), days in month, selected day, today (0 = not this month), caption, per-day event mask}.
 struct View {
   std::string title;
@@ -39,6 +41,7 @@ struct View {
   std::vector<Row> rows;
   std::vector<std::string> lines;
   std::string lead;
+  std::string image;  // Photo: storage key of the image to display
   int selected = -1;
   Softkeys keys;
 };

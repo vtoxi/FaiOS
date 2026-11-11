@@ -7,6 +7,8 @@
 #define LV_BUILD_DEMOS 0
 #define LV_USE_SDL 1
 #define LV_USE_SNAPSHOT 1
+#define LV_USE_LODEPNG 0  /* PNG decoding for the Gallery */
+#define LV_USE_STDLIB_MALLOC LV_STDLIB_CLIB  /* the built-in 64 KB heap is too small for decoding photos */
 #define LV_SDL_INCLUDE_PATH <SDL2/SDL.h>
 
 #define LV_FONT_MONTSERRAT_12 1

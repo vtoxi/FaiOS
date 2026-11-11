@@ -2,6 +2,7 @@
 #include "calc.h"
 #include "calendar.h"
 #include "games.h"
+#include "media.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -240,24 +241,29 @@ class CalcScreen : public Screen {
   Calc c_;
 };
 
-class CameraScreen : public Screen {  // SIMULATED: no camera hardware; "captures" are names only
+class CameraScreen : public Screen {  // SIMULATED: no camera hardware. A capture writes a generated placeholder image to DCIM/
  public:
   explicit CameraScreen(AppManager& m) : m_(m) {}
   bool onKey(Key k) override {
     if (k == Key::Ok) {
-      char name[16];
-      std::snprintf(name, sizeof name, "IMG_%04d", int(m_.device.photos.size()) + 1);
-      m_.device.photos.push_back(name);
-      note_ = std::string("Saved ") + name + " (simulated)";
-    } else return false;
+      if (!m_.files) note_ = "Storage unavailable";
+      else {
+        std::string name = nextPhotoName(*m_.files);
+        std::string bmp = makeBmp(160, 120, uint32_t(m_.nowMs() & 0xFFFF) + uint32_t(name.size()) * 31u);
+        note_ = !bmp.empty() && m_.files->write(kPhotoDir + name, bmp) ? "Saved " + name + " (simulated)" : "Could not save the photo";
+      }
+    } else if (k == Key::Soft1) m_.push(makeGallery(m_));
+    else return false;
     return true;
   }
   View view() const override {
     View v;
     v.title = "Camera";
     v.layout = Layout::Camera;
-    v.lines = {note_, std::to_string(m_.device.photos.size())};
-    v.keys = {"", "Capture", "Back"};
+    int n = 0;
+    if (m_.files) for (auto& f : listGallery(*m_.files)) n += f.kind == MediaKind::Image;
+    v.lines = {note_, std::to_string(n)};
+    v.keys = {"Gallery", "Capture", "Back"};
     return v;
   }
  private:
@@ -808,6 +814,120 @@ class VpnImportScreen : public Screen {
 
 std::unique_ptr<Screen> makeVpnImport(AppManager& m) { return std::make_unique<VpnImportScreen>(m); }
 
+// ---- Gallery: photos from DCIM/ and videos from Videos/ on storage ----
+std::string fileSize(size_t b) {
+  char s[24];
+  if (b < 1024) std::snprintf(s, sizeof s, "%zu B", b);
+  else if (b < 1024 * 1024) std::snprintf(s, sizeof s, "%.1f KB", b / 1024.0);
+  else std::snprintf(s, sizeof s, "%.1f MB", b / 1048576.0);
+  return s;
+}
+
+std::string stem(const std::string& n) {
+  size_t d = n.rfind('.');
+  return d == std::string::npos || d == 0 ? n : n.substr(0, d);
+}
+
+class MediaViewerScreen : public Screen {
+ public:
+  MediaViewerScreen(AppManager& m, std::string key) : m_(m), key_(std::move(key)) {}
+  bool onKey(Key k) override {
+    auto f = items();
+    int i = indexOf(f);
+    if (i < 0) return false;
+    int n = int(f.size());
+    if (k == Key::Left || k == Key::Up) key_ = f[(i + n - 1) % n].key;
+    else if (k == Key::Right || k == Key::Down) key_ = f[(i + 1) % n].key;
+    else if (k == Key::Soft1) {
+      std::string key = key_;
+      Item del = fixed("Delete", [this, key] { if (m_.files) m_.files->remove(key); m_.requestPop(2); }, "alert");  // confirm + viewer
+      del.tone = 1;
+      Items it;
+      it.push_back(std::move(del));
+      it.push_back(fixed("Cancel", [this] { m_.requestPop(1); }));
+      m_.push(std::make_unique<ListScreen>("Delete file?", std::move(it), "Select"));
+    } else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    auto f = items();
+    int i = indexOf(f);
+    v.title = i < 0 ? "Gallery" : stem(f[i].name);
+    v.keys = {i < 0 ? "" : "Delete", "", "Back"};
+    if (i < 0) { v.layout = Layout::Text; v.lines = {"File not found"}; return v; }
+    std::string data;
+    m_.files->read(f[i].key, data);
+    if (f[i].kind == MediaKind::Image) {
+      v.layout = Layout::Photo;
+      v.image = f[i].key;
+      v.lines = {f[i].name, std::to_string(i + 1) + " / " + std::to_string(f.size()) + "   " + fileSize(data.size())};
+    } else {
+      v.layout = Layout::Text;
+      v.lead = "video";
+      v.lines = {f[i].name, fileSize(data.size()), "Video playback is not available yet."};
+    }
+    return v;
+  }
+ private:
+  std::vector<MediaFile> items() const { return m_.files ? listGallery(*m_.files) : std::vector<MediaFile>(); }
+  int indexOf(const std::vector<MediaFile>& f) const {
+    for (size_t i = 0; i < f.size(); i++) if (f[i].key == key_) return int(i);
+    return -1;
+  }
+  AppManager& m_;
+  std::string key_;
+};
+
+class GalleryScreen : public Screen {  // live thumbnail grid (re-read every draw)
+ public:
+  explicit GalleryScreen(AppManager& m) : m_(m) {}
+  bool onKey(Key k) override {
+    auto f = items();
+    int n = int(f.size());
+    if (!n) return false;
+    const int cols = 3;
+    sel_ = std::min(sel_, n - 1);
+    auto lastInCol = [&](int c) { int i = c; while (i + cols < n) i += cols; return i; };
+    if (k == Key::Up) sel_ = sel_ >= cols ? sel_ - cols : lastInCol(sel_ % cols);
+    else if (k == Key::Down) sel_ = sel_ + cols < n ? sel_ + cols : sel_ % cols;
+    else if (k == Key::Left) sel_ = (sel_ + n - 1) % n;
+    else if (k == Key::Right) sel_ = (sel_ + 1) % n;
+    else if (k == Key::Ok || k == Key::Soft1) m_.push(std::make_unique<MediaViewerScreen>(m_, f[sel_].key));
+    else return false;
+    return true;
+  }
+  View view() const override {
+    View v;
+    v.title = "Gallery";
+    v.keys = {"", "", "Back"};
+    if (!m_.files) { v.layout = Layout::Text; v.lines = {"Storage unavailable"}; return v; }
+    auto f = items();
+    if (f.empty()) {
+      v.layout = Layout::Text;
+      v.lead = "image";
+      v.lines = {"No photos or videos yet.", "Take a photo with Camera, or copy files into the DCIM and Videos folders."};
+      return v;
+    }
+    v.layout = Layout::Grid;
+    for (auto& x : f) {
+      Row r;
+      r.text = stem(x.name);
+      r.sub = x.name;
+      r.lead = x.kind == MediaKind::Video ? "video" : "image";
+      if (x.kind == MediaKind::Image) r.image = x.key;
+      v.rows.push_back(std::move(r));
+    }
+    v.selected = std::min(sel_, int(f.size()) - 1);
+    v.keys = {"", "Open", "Back"};
+    return v;
+  }
+ private:
+  std::vector<MediaFile> items() const { return m_.files ? listGallery(*m_.files) : std::vector<MediaFile>(); }
+  AppManager& m_;
+  int sel_ = 0;
+};
+
 // ---- Calendar (local events; Google Calendar sync is a later phase) ----
 const char* const kMonthNames[] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"};
 const char* const kDayNames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -1091,6 +1211,7 @@ std::unique_ptr<Screen> makeLauncher(AppManager& m) {
                                                                 {fixed("Call history", {}, "history"), [&m] { return makeCallHistory(m); }}})),
       tile("Messages", "mail", "Messages", [&m] { return makeMessages(m); }),
       tile("Camera", "camera", "Camera", [&m] { return makeCamera(m); }),
+      tile("Gallery", "image", "Photos & videos", [&m] { return makeGallery(m); }),
       tile("Calendar", "calendar", "Calendar", [&m] { return makeCalendar(m); }),
       tile("Clock", "clock", "Clock & Alarms", group("Clock", {{fixed("Clock", {}, "clock", "Time and stopwatch"), [&m] { return makeClock(m); }},
                                                                 {fixed("Alarms", {}, "alarm"), [&m] { return makeAlarms(m); }}})),
@@ -1247,6 +1368,7 @@ std::unique_ptr<Screen> makeSimManager(AppManager& m) {
 std::unique_ptr<Screen> makeAccounts(AppManager& m) { return std::make_unique<AccountsScreen>(m); }
 std::unique_ptr<Screen> makeVpn(AppManager& m) { return std::make_unique<VpnScreen>(m); }
 std::unique_ptr<Screen> makeCalendar(AppManager& m) { return std::make_unique<CalendarScreen>(m); }
+std::unique_ptr<Screen> makeGallery(AppManager& m) { return std::make_unique<GalleryScreen>(m); }
 std::unique_ptr<Screen> makeSnake(AppManager& m) { return std::make_unique<SnakeScreen>(m); }
 std::unique_ptr<Screen> makeTicTacToe(AppManager& m) { return std::make_unique<TicTacToeScreen>(m); }
 std::unique_ptr<Screen> makeGuess(AppManager& m) { return std::make_unique<GuessScreen>(m); }

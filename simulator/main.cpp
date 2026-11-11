@@ -5,16 +5,22 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <sstream>
 
+#include "media.h"
 #include "mock_google.h"
 #include "screens.h"
 #include "sim_links.h"
 #include "sim_vpn.h"
+
+// PNG decoding uses zlib (see decodePng).
+#include <zlib.h>
 
 using namespace fai;
 
@@ -76,7 +82,7 @@ static const Ic kIcons[] = {
     {"file", LV_SYMBOL_FILE, 0x94A3B8},          {"connect", LV_SYMBOL_GPS, 0x22D3EE},
     {"battery", LV_SYMBOL_BATTERY_FULL, 0x4ADE80}, {"alert", LV_SYMBOL_WARNING, 0xF59E0B},
     {"mobile", LV_SYMBOL_DOWNLOAD, 0x60A5FA},    {"airplane", LV_SYMBOL_SHUFFLE, 0x94A3B8},         {"calc", LV_SYMBOL_KEYBOARD, 0x2DD4BF},
-    {"camera", LV_SYMBOL_IMAGE, 0xF87171},
+    {"camera", LV_SYMBOL_VIDEO, 0xF87171},       {"image", LV_SYMBOL_IMAGE, 0x38BDF8},       {"video", LV_SYMBOL_VIDEO, 0xFB923C},
     {"hotspot", LV_SYMBOL_WIFI, 0x38BDF8},       {"sim", LV_SYMBOL_SD_CARD, 0xFBBF24}};
 
 static const Ic* findIcon(const std::string& n) {
@@ -132,6 +138,115 @@ static void drawToggle(lv_obj_t* p, int x, int cy, bool on) {
   rr(p, x + (on ? 18 : 2), cy - 7, 14, 14, 7, 0xFFFFFF);
 }
 
+// ---- images (Gallery) ----
+// BMP is decoded here; PNG through LVGL's decoder. Decoded and scaled pixels are cached by key so a redraw is cheap.
+struct ImgBuf { int w = 0, h = 0; std::vector<uint32_t> px; };  // XRGB8888, top-down
+static std::map<std::string, std::unique_ptr<ImgBuf>> g_decoded;
+struct Scaled { std::vector<uint32_t> px; lv_image_dsc_t dsc; };
+static std::map<std::string, std::unique_ptr<Scaled>> g_scaled;
+
+static uint32_t be32(const unsigned char* p) { return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 | p[3]; }
+
+// Minimal PNG reader (zlib): 8-bit gray / gray+alpha / RGB / RGBA, non-interlaced. Anything else is refused, not guessed.
+static bool decodePng(const std::string& b, ImgBuf& out) {
+  const unsigned char* d = reinterpret_cast<const unsigned char*>(b.data());
+  if (b.size() < 33 || std::memcmp(d, "\x89PNG\r\n\x1a\n", 8) != 0) return false;
+  uint32_t w = 0, h = 0;
+  int depth = 0, ctype = -1, interlace = 0;
+  std::string idat;
+  for (size_t pos = 8; pos + 12 <= b.size();) {
+    uint32_t len = be32(d + pos);
+    if (len > b.size() - pos - 12) return false;
+    const unsigned char* t = d + pos + 4;
+    const unsigned char* body = d + pos + 8;
+    if (!std::memcmp(t, "IHDR", 4) && len == 13) { w = be32(body); h = be32(body + 4); depth = body[8]; ctype = body[9]; interlace = body[12]; }
+    else if (!std::memcmp(t, "IDAT", 4)) idat.append(reinterpret_cast<const char*>(body), len);
+    else if (!std::memcmp(t, "IEND", 4)) break;
+    pos += 12 + len;
+  }
+  int ch = ctype == 0 ? 1 : ctype == 2 ? 3 : ctype == 4 ? 2 : ctype == 6 ? 4 : 0;
+  if (!ch || depth != 8 || interlace || w < 1 || h < 1 || w > 2048 || h > 2048) return false;
+  const size_t stride = size_t(w) * ch, need = (stride + 1) * h;
+  std::vector<unsigned char> raw(need);
+  uLongf got = uLongf(need);
+  if (uncompress(raw.data(), &got, reinterpret_cast<const Bytef*>(idat.data()), uLong(idat.size())) != Z_OK || got != need) return false;
+  std::vector<unsigned char> img(stride * h);
+  for (size_t y = 0; y < h; y++) {
+    unsigned char* cur = &img[y * stride];
+    const unsigned char* up = y ? cur - stride : nullptr;
+    const unsigned char* src = &raw[y * (stride + 1)];
+    int f = src[0];
+    if (f > 4) return false;
+    for (size_t i = 0; i < stride; i++) {
+      int a = i >= size_t(ch) ? cur[i - ch] : 0, u = up ? up[i] : 0, c = (up && i >= size_t(ch)) ? up[i - ch] : 0, x = src[1 + i], v;
+      if (f == 0) v = x;
+      else if (f == 1) v = x + a;
+      else if (f == 2) v = x + u;
+      else if (f == 3) v = x + (a + u) / 2;
+      else { int pp = a + u - c, pa = std::abs(pp - a), pb = std::abs(pp - u), pc = std::abs(pp - c); v = x + (pa <= pb && pa <= pc ? a : pb <= pc ? u : c); }
+      cur[i] = static_cast<unsigned char>(v);
+    }
+  }
+  out.w = int(w);
+  out.h = int(h);
+  out.px.resize(size_t(w) * h);
+  for (size_t i = 0; i < out.px.size(); i++) {  // alpha is ignored: photos are shown opaque
+    const unsigned char* p = &img[i * ch];
+    unsigned r = p[0], g = ch >= 3 ? p[1] : p[0], bl = ch >= 3 ? p[2] : p[0];
+    out.px[i] = 0xFF000000u | r << 16 | g << 8 | bl;
+  }
+  return true;
+}
+
+static const ImgBuf* loadImage(const std::string& key) {
+  auto it = g_decoded.find(key);
+  if (it != g_decoded.end()) return it->second->w ? it->second.get() : nullptr;  // cached failures are remembered too
+  if (g_decoded.size() > 40) { g_decoded.clear(); g_scaled.clear(); }
+  auto buf = std::make_unique<ImgBuf>();
+  std::string bytes;
+  if (g_mgr.files && g_mgr.files->read(key, bytes)) {
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgb;
+    if (parseBmp(bytes, w, h, rgb)) {
+      buf->w = w; buf->h = h;
+      buf->px.resize(size_t(w) * h);
+      for (size_t i = 0; i < buf->px.size(); i++) buf->px[i] = 0xFF000000u | uint32_t(rgb[i * 3]) << 16 | uint32_t(rgb[i * 3 + 1]) << 8 | rgb[i * 3 + 2];
+    } else if (!decodePng(bytes, *buf)) { buf->w = buf->h = 0; buf->px.clear(); }
+  }
+  const ImgBuf* r = buf->w ? buf.get() : nullptr;
+  g_decoded[key] = std::move(buf);
+  return r;
+}
+
+// Shows image `key` scaled to fit inside (x, y, w, h), centred. Returns false if it cannot be decoded.
+static bool drawImageFit(lv_obj_t* p, const std::string& key, int x, int y, int w, int h) {
+  const ImgBuf* src = loadImage(key);
+  if (!src) return false;
+  const double s = std::min(double(w) / src->w, double(h) / src->h);
+  const int tw = std::max(1, int(src->w * s)), th = std::max(1, int(src->h * s));
+  const std::string sk = key + "@" + std::to_string(tw) + "x" + std::to_string(th);
+  auto it = g_scaled.find(sk);
+  if (it == g_scaled.end()) {
+    auto sc = std::make_unique<Scaled>();
+    sc->px.resize(size_t(tw) * th);
+    for (int yy = 0; yy < th; yy++)
+      for (int xx = 0; xx < tw; xx++) sc->px[size_t(yy) * tw + xx] = src->px[size_t(yy * src->h / th) * src->w + size_t(xx * src->w / tw)];  // nearest neighbour
+    std::memset(&sc->dsc, 0, sizeof sc->dsc);
+    sc->dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    sc->dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
+    sc->dsc.header.w = tw;
+    sc->dsc.header.h = th;
+    sc->dsc.header.stride = tw * 4;
+    sc->dsc.data_size = size_t(tw) * th * 4;
+    sc->dsc.data = reinterpret_cast<const uint8_t*>(sc->px.data());
+    it = g_scaled.emplace(sk, std::move(sc)).first;
+  }
+  lv_obj_t* im = lv_image_create(p);
+  lv_image_set_src(im, &it->second->dsc);
+  lv_obj_set_pos(im, x + (w - tw) / 2, y + (h - th) / 2);
+  return true;
+}
+
 static void drawList(lv_obj_t* scr, const View& v, int top, int bottom) {
   bool anySub = false;
   for (auto& r : v.rows) anySub |= !r.sub.empty();
@@ -178,7 +293,8 @@ static void drawGrid(lv_obj_t* scr, const View& v, int top) {
     const bool sel = i == v.selected;
     const int x = gx + (i % cols) * (tile + gx), y = top + row * (tile + gy);
     rr(scr, x, y, tile, tile, 14, sel ? C_ACC : C_SURF);
-    if (const Ic* ic = findIcon(r.lead)) label(scr, ic->sym, F28, sel ? 0xFFFFFF : ic->col, x, y + 5, tile, LV_TEXT_ALIGN_CENTER);
+    if (!r.image.empty() && drawImageFit(scr, r.image, x + 3, y + 3, tile - 6, 36)) {}  // photo thumbnail
+    else if (const Ic* ic = findIcon(r.lead)) label(scr, ic->sym, F28, sel ? 0xFFFFFF : ic->col, x, y + 5, tile, LV_TEXT_ALIGN_CENTER);
     label(scr, r.text, F12, sel ? 0xFFFFFF : C_DIM, x - 8, y + 41, tile + 16, LV_TEXT_ALIGN_CENTER);  // may spill into the tile gap so "Messages" fits
   }
   if (v.selected >= 0) {  // full name of the selected app under the grid
@@ -271,6 +387,16 @@ static void drawCalendar(lv_obj_t* scr, const View& v, int top) {
   label(scr, v.lines[5], F14, C_DIM, 0, gy + 6 * rowH + 4, W, LV_TEXT_ALIGN_CENTER);
 }
 
+static void drawPhoto(lv_obj_t* scr, const View& v, int top) {
+  const int bottom = H - SOFT - 6, capH = 34, ah = bottom - (top + 4) - capH;
+  rr(scr, 8, top + 4, W - 16, ah, 10, 0x05080F);
+  if (!drawImageFit(scr, v.image, 10, top + 6, W - 20, ah - 4)) {
+    label(scr, "Preview not available for this format", F14, C_DIM, 20, top + 4 + ah / 2 - 16, W - 40, LV_TEXT_ALIGN_CENTER, true);
+  }
+  label(scr, v.lines[0], F14, C_TXT, 8, bottom - capH + 4, W - 16, LV_TEXT_ALIGN_CENTER);
+  label(scr, v.lines[1], F12, C_DIM, 8, bottom - capH + 20, W - 16, LV_TEXT_ALIGN_CENTER);
+}
+
 static void drawCamera(lv_obj_t* scr, const View& v, int top) {
   const int x = 10, y = top + 4, w = W - 20, h = 168;
   rr(scr, x, y, w, h, 10, 0x05080F);
@@ -354,6 +480,7 @@ static void render() {
       case Layout::Battery: drawBattery(scr, v, top); break;
       case Layout::Board: drawBoard(scr, v, top); break;
       case Layout::Calendar: drawCalendar(scr, v, top); break;
+      case Layout::Photo: drawPhoto(scr, v, top); break;
       default: drawList(scr, v, top, H - SOFT); break;
     }
   }
