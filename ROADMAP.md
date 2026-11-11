@@ -52,5 +52,6 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 - [x] HARDWARE_DISCOVERY.md: fields marked UNKNOWN with web LEADS kept separate from evidence; tiered plan; battery safety notes; decision gates
 - [x] FIRMWARE_PRESERVATION.md: backup/verify/restore-path procedure (nothing executed)
 - [x] `build/scripts/usb-inventory.ps1` (read-only); first run saw a MediaTek Preloader device (E-2), identity unconfirmed
-- [ ] Confirm E-2 is the phone; photograph the label under the battery; FCC ID lookup
+- [x] Replug test with `usb-watch.ps1`: no enumeration seen (E-4), so E-2/E-3 remain unconfirmed
+- [ ] Try: data-capable cable, battery removed vs old battery inserted; then photograph the label under the battery; FCC ID lookup
 - [ ] Nothing flashed, read back or modified. No compatibility claim.

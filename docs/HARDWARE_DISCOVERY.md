@@ -17,7 +17,7 @@ Rule: a field is **VERIFIED** only with first-hand evidence from *this* phone (p
 | Wi-Fi / Bluetooth | UNKNOWN | open | |
 | Battery | label 3.8 V; pack measured 0 V | partly observed | user multimeter reading (E-0) |
 | Bootloader / recovery mode | UNKNOWN | open | |
-| USB VID/PID | CANDIDATE 0E8D:2000 (MediaTek Preloader) | unconfirmed | see E-2; confirm by unplugging the phone and re-running the script |
+| USB VID/PID | UNKNOWN (MediaTek device seen on this PC, identity unconfirmed) | open | E-2, E-3; replug test showed nothing (E-4) |
 | OS / firmware version | UNKNOWN | open | LEAD: KaiOS 2.5.x reported on this family ([PhoneCopy](https://www.phonecopy.com/en/phones/view/jazz_digit_4g_bold)) |
 
 **Warning from a lead:** the only flashing guide found is for the Digit 4G *Lite* (Spreadtrum PAC file) and says flashing it on another model hard-bricks the phone. Same brand does not mean same chipset.
@@ -31,6 +31,8 @@ Add one row per finding. Confidence: high = direct observation of this unit, med
 | E-0 | 2026-11-11 | Phone does not power on; stock pack labelled 3.8 V reads 0 V | user multimeter | high |
 | E-1 | | Model label text, IMEI, FCC ID/PTA, serial | photo | |
 | E-2 | 2026-11-11 | Windows lists USB `VID_0E8D&PID_2000` "MT65xx Preloader", status Error, present at scan time. 0E8D is MediaTek's vendor ID; this PID is the MediaTek BootROM/Preloader serial port. **Not yet confirmed to be this phone** (user to say whether it was plugged in). If it is, that points to a MediaTek SoC and suggests the phone is alive but cannot boot without a battery. | `usb-inventory.ps1` output | medium (device identity unconfirmed) |
+| E-3 | 2026-11-11 | Windows device history (not currently present): `0E8D:2000` "MT65xx Preloader" on two different ports and `0E8D:0003` "USB Serial Device (COM5)". 0E8D is MediaTek's vendor ID, so a MediaTek-based USB device has connected to this PC at least twice. Which device it was is unconfirmed. | `Get-PnpDevice` (read-only) | low-medium |
+| E-4 | 2026-11-11 | `usb-watch.ps1` ran 120 s (11:27:27-11:29:27) while the user unplugged and replugged the phone: **no USB device appeared or disappeared**. So no enumeration was observed from the phone in this state. Not conclusive: polling is ~1 s and a sub-second blip would be missed; cable data capability and battery state were not controlled. | `usb-watch.ps1` log | medium (negative result, limited) |
 
 ## Discovery plan (safest first; stop at the first tier that answers the question)
 
