@@ -32,5 +32,5 @@ Real telephony, SMS, camera, audio, radios, persistence, Calculator/Clock/File m
 ## UI polish pass
 - [x] Themed renderer: navy theme, gradient home, icon-grid launcher, card rows with letter avatars / icons / toggle switches / unread dots, on-screen dial keypad, detail cards, 3-slot softkey bar, scrollbar
 - [x] Contact card has a Call softkey that opens the dialer prefilled
-- [ ] Visual check in the live window — pending user feedback
+- [x] Visual check in the live window: user approved the look
 - [ ] No animations/transitions yet (renderer rebuilds the whole screen per change)
