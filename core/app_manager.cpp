@@ -50,6 +50,7 @@ void AppManager::frame() {
 void AppManager::tick(std::time_t now) {
   if (net) net->poll();   // link changes reach the VPN manager through its listener
   if (vpn) vpn->tick();
+  if (sync) sync->tick();  // due account syncs (offline-safe, backs off on failure)
   long minute = long(now / 60);
   if (minute == lastMinute_) return;  // at most once per minute
   lastMinute_ = minute;

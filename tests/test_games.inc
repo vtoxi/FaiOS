@@ -296,7 +296,8 @@ static void test_tictactoe_screen() {
   CHECK(v.lines[1][2] == 'X' && x == 1 && o == 1);
   press(*m, Key::Ok);                                      // occupied cell: nothing happens
   x = o = 0;
-  for (int r = 1; r <= 3; r++) for (char c : m->top()->view().lines[r]) { x += c == 'X'; o += c == 'O'; }
+  v = m->top()->view();                                   // keep the View alive: iterating a line of a temporary dangles
+  for (int r = 1; r <= 3; r++) for (char c : v.lines[r]) { x += c == 'X'; o += c == 'O'; }
   CHECK(x == 1 && o == 1);
   for (int guard = 0; guard < 30 && m->top()->view().keys.center == "Place"; guard++) {  // play it out
     press(*m, Key::Right);

@@ -364,6 +364,7 @@ static void test_settings_persist() {
 #include "test_gallery.inc"
 #include "test_media_apps.inc"
 #include "test_browser.inc"
+#include "test_sync.inc"
 
 int main() {
   test_launcher_and_back();
@@ -459,6 +460,18 @@ int main() {
   test_url_policy();
   test_tab_manager();
   test_tab_budgets();
+  test_contact_store();
+  test_event_store_sync_fields();
+  test_contacts_pull_and_incremental();
+  test_contacts_push_edit_delete();
+  test_contacts_offline_queue();
+  test_contacts_conflicts();
+  test_contacts_failures_and_safety();
+  test_calendar_pull();
+  test_calendar_push_and_conflicts();
+  test_calendar_failures_and_forget();
+  test_sync_manager();
+  test_sync_ui();
   test_accounts_screens();
   test_account_detail_and_sign_out();
   test_mock_signin_hook_is_visible_only_when_set();

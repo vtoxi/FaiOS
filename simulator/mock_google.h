@@ -22,7 +22,7 @@ class MockGoogleHttp : public IHttp {
     Json j = Json::makeObject();
     j.set("access_token", Json::makeString("mock-access-" + std::to_string(++n_)));
     j.set("expires_in", Json::makeNumber(3600));
-    j.set("scope", Json::makeString("openid email profile"));
+    j.set("scope", Json::makeString("openid email profile https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/calendar.events"));  // MOCK: pretends everything was granted
     if (firstGrant) {  // like Google, only the first exchange returns a refresh token and an ID token
       j.set("refresh_token", Json::makeString("mock-refresh"));
       j.set("id_token", Json::makeString(idToken()));

@@ -25,5 +25,15 @@ Requested with `include_granted_scopes=true` so later requests add to earlier co
 - PKCE (S256), authorization URL, redirect parsing with `state` check, code exchange, refresh, revoke, ID-token claim checks: **implemented, tested against a mock transport**.
 - Account manager, token lifecycle, re-auth handling, sign-out with revocation: **implemented, tested against a mock transport**.
 - Settings -> Accounts -> Add account -> Google: shows exactly which prerequisite is missing (client ID, secure storage, external browser).
-- **Not built:** real HTTP/TLS transport, external-browser launch and loopback listener, Contacts/Calendar sync, SQLite repository, offline queue, conflict resolution, Gmail/Drive.
+- **Built, tested against a fake only (`MockGoogleApi`):** Contacts and Calendar sync, offline queue, conflict handling, scheduler (`core/sync.*`, `core/contacts.*`). Request shapes follow Google's documentation; real behaviour is UNVERIFIED.
+- **Not built:** real HTTP/TLS transport, external-browser launch and loopback listener, SQLite repository (JSON files today), Gmail/Drive.
+
+## Sync design (Contacts and Calendar)
+
+- **Offline-first.** The UI reads only local stores. A local add/edit/delete sets `dirty` (or a tombstone for a synced item). That flag is the persistent queue; it survives restarts and a failed sync never clears it.
+- **Pull then push.** Pull is incremental (`syncToken`; first sync lists contacts fully and the last 30 days of events). All pages are fetched before anything is applied, and the new sync token is saved only after the pull was applied and saved. Expired tokens (People: 400 EXPIRED_SYNC_TOKEN, Calendar: 410) trigger one full resync.
+- **Conflicts never destroy data.** If both sides changed an item, the account's version keeps the original and the local edit becomes a separate "(local)" copy that is uploaded. Remote delete vs local edit keeps the edit and re-creates it. Local delete vs remote edit: the delete wins. Etag mismatches found at push time (People 400 FAILED_PRECONDITION, Calendar 412) take the same path.
+- **Scheduler.** Every 15 min while healthy; offline or server errors back off 30 s, 60 s ... capped at 15 min; no link = no attempt and no backoff; an authorisation problem stops automatic retries until the user acts ("Sync now" still works).
+- **Safety.** Server-supplied ids are validated before they go into a URL (no path/query injection); the access token is sent only in the Authorization header and never logged; a loop guard bounds retries per item; paging is capped at 50 pages; removing an account deletes the items synced from it.
+- **Known limits.** Sync needs the write scopes (`contacts`, `calendar.events`); with read-only scopes pushes get 403 and show "permission denied". Time zones: downloaded events keep their own wall-clock time, uploaded ones use the configured UTC offset. A contact keeps one name (sent as givenName) and one number. Events spanning midnight are shown on their start day. Recurring events are expanded by Google (`singleEvents=true`); editing a single instance is not modelled.
 - **Not verified against real Google at all.** Every test uses a scripted fake. First real sign-in needs a client ID from the owner and the pieces above.

@@ -65,6 +65,7 @@ int EventStore::add(Date d, int startMin, int durationMin, const std::string& ti
   e.title.erase(0, e.title.find_first_not_of(' '));  // whitespace-only titles become the default
   if (e.title.empty()) e.title = "Event";
   e.source = source.empty() ? "local" : source;
+  e.dirty = true;  // new on this phone: waiting to be uploaded when an account syncs
   events_.push_back(e);
   if (!save()) { events_.pop_back(); next_--; return 0; }  // not persisted = not added
   return e.id;

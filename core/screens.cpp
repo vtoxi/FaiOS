@@ -554,8 +554,20 @@ std::unique_ptr<Screen> makeAccountDetail(AppManager& m, const std::string& id) 
     i.toggle = [acct, svc] { const Account* a = acct(); return a && (svc == SyncService::Contacts ? a->syncContacts : a->syncCalendar) ? 1 : 0; };
     return i;
   };
+  Item syncNow = fixed("Sync now", [&m, id] {
+    if (!m.sync) return;
+    SyncResult r = m.sync->syncNow(id);
+    m.notifications.add("Sync", r.ok() ? "Synced: " + std::to_string(r.pulled) + " received, " + std::to_string(r.pushed) + " sent" + (r.conflicts ? ", " + std::to_string(r.conflicts) + " conflict(s) kept as copies" : std::string())
+                                       : std::string("Sync failed: ") + syncStatusName(r.status) + (r.detail.empty() ? "" : " (" + r.detail + ")"));
+  }, "connect");
+  syncNow.sub = [&m, id] {
+    const SyncManager::State* s = m.sync ? m.sync->state(id) : nullptr;
+    if (!m.sync) return std::string("Not available");
+    if (!s || !s->everRan) return std::string("Not synced yet");
+    return s->last == SyncStatus::Ok ? std::string("Up to date") : std::string(syncStatusName(s->last)) + ", will retry";
+  };
   Item out = fixed("Sign out", [&m, id] {
-    Item yes = fixed("Sign out and revoke access", [&m, id] { if (m.accounts) m.accounts->remove(id); m.requestPop(2); }, "alert");
+    Item yes = fixed("Sign out and revoke access", [&m, id] { if (m.accounts) m.accounts->remove(id); if (m.gsync) m.gsync->forget(id); m.requestPop(2); }, "alert");
     yes.tone = 1;
     Items it;
     it.push_back(std::move(yes));
@@ -569,6 +581,7 @@ std::unique_ptr<Screen> makeAccountDetail(AppManager& m, const std::string& id) 
   it.push_back(std::move(last));
   it.push_back(toggleItem("Sync contacts", SyncService::Contacts, "Contacts"));
   it.push_back(toggleItem("Sync calendar", SyncService::Calendar, "Calendar"));
+  it.push_back(std::move(syncNow));
   it.push_back(std::move(out));
   return std::make_unique<ListScreen>("Account", std::move(it), "Select");
 }
@@ -1415,6 +1428,16 @@ std::unique_ptr<Screen> makeContacts(AppManager& m) {
                                           [&m, number] { m.push(makePhone(m, digitsOf(number))); }));
     }, avatar(name), number));
   }
+  if (m.contacts)  // contacts on the phone, including ones synced from an account
+    for (auto& c : m.contacts->visible()) {
+      std::string name = c.name, number = c.number;
+      Item r = fixed(name, [&m, name, number] {
+        m.push(std::make_unique<TextScreen>(name, std::vector<std::string>{number.empty() ? "No number" : number}, avatar(name), number.empty() ? "" : "Call",
+                                            [&m, number] { m.push(makePhone(m, digitsOf(number))); }));
+      }, avatar(name), number.empty() ? "No number" : number);
+      if (c.source != "local") r.trail = [] { return std::string("G"); };  // synced from an account
+      it.push_back(std::move(r));
+    }
   return std::make_unique<ListScreen>("Contacts", std::move(it), "View");
 }
 

@@ -15,6 +15,7 @@
 
 #include "media.h"
 #include "mock_google.h"
+#include "mock_google_api.h"
 #include "screens.h"
 #include "sim_links.h"
 #include "sim_vpn.h"
@@ -589,12 +590,18 @@ int main(int argc, char** argv) {
   SystemRandom rng;
   NullHttp nullHttp;
   MockGoogleHttp mockHttp("mock-client");
+  MockGoogleApi mockApi;  // MOCK People/Calendar data, used only with --mock-google
+  struct MockRouter : IHttp {  // OAuth endpoints -> MockGoogleHttp, data APIs -> MockGoogleApi
+    MockGoogleHttp& oauth; MockGoogleApi& api;
+    MockRouter(MockGoogleHttp& o, MockGoogleApi& a) : oauth(o), api(a) {}
+    HttpResponse send(const HttpRequest& r) override { return r.url.find("://people.googleapis.com/") != std::string::npos || r.url.find("/calendar/v3/") != std::string::npos ? api.send(r) : oauth.send(r); }
+  } mockRouter(mockHttp, mockApi);
 #ifdef FAIOS_HAVE_OPENSSL
   AesGcmSecretBox box(machineKeyMaterial(), rng);
 #else
   NoSecretBox box;  // no OpenSSL: tokens are refused, never stored in plaintext
 #endif
-  AccountManager accounts(storage, box, mockGoogle ? static_cast<IHttp&>(mockHttp) : static_cast<IHttp&>(nullHttp), rng, g_mgr.log,
+  AccountManager accounts(storage, box, mockGoogle ? static_cast<IHttp&>(mockRouter) : static_cast<IHttp&>(nullHttp), rng, g_mgr.log,
                           [] { return static_cast<long long>(std::time(nullptr)) * 1000; });
   OAuthClient oc;
   oc.clientId = mockGoogle ? "mock-client" : config.getString("google_client_id");
@@ -620,6 +627,21 @@ int main(int argc, char** argv) {
   EventStore events(storage);  // local calendar events
   events.load();
   g_mgr.events = &events;
+  ContactStore contactStore(storage);
+  contactStore.load();
+  g_mgr.contacts = &contactStore;
+  GoogleSync gsync(mockGoogle ? static_cast<IHttp&>(mockRouter) : static_cast<IHttp&>(nullHttp), storage, contactStore, events, g_mgr.log);
+  SyncManager syncMgr(accounts, gsync, g_mgr.log, [] { return static_cast<long long>(std::time(nullptr)) * 1000; }, [&] { return network.active() != LinkKind::None; });
+  g_mgr.gsync = &gsync;
+  g_mgr.sync = &syncMgr;
+  if (mockGoogle) {  // fake account data so the sync screens have something to show
+    mockApi.addPerson("[MOCK] Sana", "0300 5550101"); mockApi.addPerson("[MOCK] Bilal", "0321 5550102");
+    std::time_t t = std::time(nullptr) + 86400;
+    std::tm* d = std::localtime(&t);
+    char day[16];
+    std::snprintf(day, sizeof day, "%04d-%02d-%02d", d->tm_year + 1900, d->tm_mon + 1, d->tm_mday);
+    mockApi.addEvent("[MOCK] Team call", "dateTime", std::string(day) + "T11:00:00Z", "dateTime", std::string(day) + "T11:30:00Z");
+  }
   if (vpnDemo && !storage.exists("import/demo.conf") && vpnStore.profiles().empty()) storage.write("import/demo.conf", demoWgConfig());
   if (mockGoogle)
     g_mgr.mockSignIn = [&] {

@@ -5,11 +5,13 @@
 #include <memory>
 #include <vector>
 #include "accounts.h"
+#include "contacts.h"
 #include "events.h"
 #include "network.h"
 #include "vpn.h"
 #include "screen.h"
 #include "services.h"
+#include "sync.h"
 
 namespace fai {
 
@@ -49,6 +51,9 @@ class AppManager {
     return (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
   };
   EventStore* events = nullptr;           // null = calendar storage unavailable
+  ContactStore* contacts = nullptr;       // null = only the built-in sample contacts are shown
+  GoogleSync* gsync = nullptr;            // null = no sync engine (accounts then only sign in)
+  SyncManager* sync = nullptr;
   std::function<std::time_t()> wall = [] { return std::time(nullptr); };  // wall clock (tests inject a fixed date)
   NetworkManager* net = nullptr;          // null = network service unavailable
   VpnStore* vpnStore = nullptr;

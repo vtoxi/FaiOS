@@ -440,7 +440,7 @@ static void test_account_detail_and_sign_out() {
   press(*m, Key::Down);
   press(*m, Key::Ok);
   v = m->top()->view();
-  CHECK(title(*m) == "Account" && v.rows.size() == 6 && v.rows[0].text == "Ayesha Khan" && v.rows[0].lead == "@A");
+  CHECK(title(*m) == "Account" && v.rows.size() == 7 && v.rows[0].text == "Ayesha Khan" && v.rows[0].lead == "@A");
   CHECK(v.rows[1].trail == "OK" && v.rows[2].trail == "Never" && v.rows[3].toggle == 0 && v.rows[4].toggle == 0);
   for (int i = 0; i < 4; i++) press(*m, Key::Down);  // Sync calendar: scope was NOT granted
   press(*m, Key::Ok);
@@ -450,7 +450,7 @@ static void test_account_detail_and_sign_out() {
   CHECK(t.am->find(id)->syncContacts && m->top()->view().rows[3].toggle == 1);
   t.am->markSynced(id);
   CHECK(m->top()->view().rows[2].trail != "Never");
-  press(*m, Key::Down); press(*m, Key::Down);
+  press(*m, Key::Down); press(*m, Key::Down); press(*m, Key::Down);   // past "Sync now" to Sign out
   press(*m, Key::Ok);  // Sign out -> confirmation
   CHECK(title(*m) == "Sign out?");
   press(*m, Key::Down);

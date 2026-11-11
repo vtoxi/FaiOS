@@ -272,7 +272,7 @@ static void test_calendar_pull() {
   const Event* h = t.event("Holiday");
   CHECK(h && h->startMin == -1 && h->date.d == 14);
   const Event* ln = t.event("Late night");
-  CHECK(ln && ln->startMin == 1380 && ln->durationMin == 60);                                // crosses midnight: shown as it starts, 23:00 + (01:00 next day) clipped sensibly
+  CHECK(ln && ln->startMin == 1380 && ln->durationMin == 120);                               // 23:00 to 01:00 next day = 2 h, shown on the day it starts
   CHECK(t.event("Event") != nullptr);                                                        // blank title gets the default
   CHECK(t.es->hasEvents({2026, 11, 12}));
   CHECK(t.api.requests[0].find("timeMin=") != std::string::npos && t.api.requests[0].find("2026-10-12") != std::string::npos);   // first sync: the last 30 days on
@@ -317,10 +317,10 @@ static void test_calendar_push_and_conflicts() {
   // delete: tombstone, offline, then online
   t.es->remove(allDay);
   t.api.offline = true;
-  CHECK(t.calendar().status == SyncStatus::Offline && t.es->raw().size() == 5);
+  CHECK(t.calendar().status == SyncStatus::Offline && t.es->raw().size() == 4);
   t.api.offline = false;
   r = t.calendar();
-  CHECK(r.ok() && t.api.liveEvents() == 3 && t.es->raw().size() == 4);
+  CHECK(r.ok() && t.api.liveEvents() == 3 && t.es->raw().size() == 3);
   // stale etag found at push time
   t.es->setTitle(timed, "Stale edit");
   for (auto& e : t.es->raw()) if (e.id == timed) e.etag = "\"stale\"";
@@ -430,4 +430,45 @@ static void test_sync_manager() {
   size_t r5 = t.api.requests.size();
   sm.tick();
   CHECK(t.api.requests.size() == r5);
+}
+
+static void test_sync_ui() {
+  Rig acct;
+  std::string id = acct.signIn("openid email profile https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/calendar.events");
+  acct.am->setSync(id, SyncService::Contacts, true);
+  SyncRig t;
+  t.api.requiredToken = "ACCESS-1";
+  t.api.addPerson("Sana", "0300 1");
+  t.api.addEvent("Meet", "dateTime", "2026-11-12T09:00:00Z", "dateTime", "2026-11-12T10:00:00Z");
+  GoogleSync gsync(t.api, t.st, *t.cs, *t.es, t.log);
+  long long now = acct.now;
+  SyncManager sm(*acct.am, gsync, t.log, [&] { return now; });
+  auto* m = boot();
+  m->accounts = acct.am.get();
+  m->contacts = t.cs.get();
+  m->sync = &sm;
+  m->gsync = &gsync;
+  openAccounts(*m);
+  press(*m, Key::Down);
+  press(*m, Key::Ok);
+  CHECK(title(*m) == "Account" && m->top()->view().rows[5].text == "Sync now" && m->top()->view().rows[5].sub == "Not synced yet");
+  for (int i = 0; i < 5; i++) press(*m, Key::Down);
+  press(*m, Key::Ok);
+  CHECK(m->top()->view().rows[5].sub == "Up to date" && t.cs->visible().size() == 1 && t.es->raw().empty());   // calendar sync is off, so no events came
+  CHECK(m->notifications.list()[0].body.find("Synced: 1 received") == 0);
+  t.api.offline = true;
+  press(*m, Key::Ok);
+  CHECK(m->top()->view().rows[5].sub == "offline, will retry" && m->notifications.list().back().body.find("Sync failed: offline") == 0);
+  // synced contacts appear in the Contacts app, marked
+  press(*m, Key::End);
+  press(*m, Key::Ok); press(*m, Key::Num1); press(*m, Key::Num2);
+  auto v = m->top()->view();
+  bool found = false;
+  for (auto& r : v.rows) found |= r.text == "Sana" && r.trail == "G";
+  CHECK(title(*m) == "Contacts" && v.rows.size() == 5 && found);                                                // 4 built-in samples + 1 synced
+  // signing out removes the synced data
+  press(*m, Key::End);
+  gsync.forget(id);
+  CHECK(t.cs->raw().empty());
+  delete m;
 }
