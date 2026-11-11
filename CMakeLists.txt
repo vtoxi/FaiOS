@@ -6,8 +6,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(FAIOS_BUILD_SIMULATOR "Build the LVGL/SDL2 desktop simulator (needs network + libsdl2-dev)" ON)
 
 # Toolkit-independent core: screens, key routing, simulated device state.
-add_library(faios_core core/app_manager.cpp core/screens.cpp core/services.cpp core/calc.cpp)
+add_library(faios_core core/app_manager.cpp core/screens.cpp core/services.cpp core/calc.cpp core/games.cpp
+            core/json.cpp core/crypto.cpp core/oauth.cpp core/secret_box.cpp core/accounts.cpp)
 target_include_directories(faios_core PUBLIC core)
+
+# Encrypted token storage needs a vetted crypto library. Without OpenSSL the secret box is unavailable
+# and the account manager refuses to store tokens (fails closed); it never falls back to plaintext.
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+  target_compile_definitions(faios_core PUBLIC FAIOS_HAVE_OPENSSL)
+  target_link_libraries(faios_core PUBLIC OpenSSL::Crypto)
+  message(STATUS "FaiOS: OpenSSL found, AES-256-GCM secret box enabled")
+else()
+  message(WARNING "FaiOS: OpenSSL development files not found; encrypted token storage is DISABLED (tests for it are skipped)")
+endif()
 
 enable_testing()
 add_executable(test_core tests/test_core.cpp)

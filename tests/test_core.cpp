@@ -322,6 +322,7 @@ static void test_settings_persist() {
 
 #include "test_apps.inc"
 #include "test_more_apps.inc"
+#include "test_accounts.inc"
 
 int main() {
   test_launcher_and_back();
@@ -354,6 +355,24 @@ int main() {
   test_battery_screen();
   test_alarms();
   test_notifications_screen();
+  test_sha256_and_base64();
+  test_pkce_rfc7636_vector();
+  test_json();
+  test_auth_url_and_redirect();
+  test_token_endpoint();
+  test_id_token_validation();
+  test_account_sign_in_and_storage();
+  test_account_sign_in_failures();
+  test_no_secure_storage_fails_closed();
+  test_token_refresh_and_reauth();
+  test_tampered_tokens_need_reauth();
+  test_scope_changes_and_sync_flags();
+  test_remove_account();
+#ifdef FAIOS_HAVE_OPENSSL
+  test_aes_gcm_secret_box();
+#else
+  std::printf("SKIPPED: AES-GCM secret box tests (OpenSSL development files not installed)\n");
+#endif
   std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
   return failures ? 1 : 0;
 }
